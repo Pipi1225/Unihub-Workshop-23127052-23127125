@@ -8,6 +8,9 @@ const createCorsOptions = require("./config/cors");
 const createSupabaseClient = require("./config/supabase");
 const healthRoute = require("./routes/healthRoute");
 
+// Khởi tạo Redis ngay khi chạy server để nó in ra log kết nối
+require("./config/redis");
+
 const PORT = Number(process.env.PORT || 4000);
 
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || "http://localhost:5173";
@@ -31,22 +34,22 @@ app.use("/api", healthRoute);
 
 // --- Middleware Xử lý 404 ---
 app.use((_req, res) => {
-	res.status(404).json({
-		ok: false,
-		message: "Resource not found",
-	});
+  res.status(404).json({
+    ok: false,
+    message: "Resource not found",
+  });
 });
 
 // --- Middleware Xử lý Lỗi Cuối cùng ---
 app.use((err, _req, res, _next) => {
-	console.error(err);
-	res.status(500).json({
-		ok: false,
-		message: "Internal server error",
-	});
+  console.error(err);
+  res.status(500).json({
+    ok: false,
+    message: "Internal server error",
+  });
 });
 
 // --- Khởi động server ---
 app.listen(PORT, () => {
-	console.log(`Server listening at http://localhost:${PORT}`);
+  console.log(`Server listening at http://localhost:${PORT}`);
 });
