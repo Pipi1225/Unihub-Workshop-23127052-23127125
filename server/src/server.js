@@ -4,9 +4,12 @@ require("dotenv").config();
 // --- Express Setup & Middleware ---
 const express = require("express");
 const cors = require("cors");
+const cookieParser = require("cookie-parser");
 const createCorsOptions = require("./config/cors");
 const createSupabaseClient = require("./config/supabase");
 const healthRoute = require("./routes/healthRoute");
+const authRoute = require("./routes/authRoute");
+const { errorHandler, notFoundHandler } = require("./middlewares/errorHandler");
 
 // Khởi tạo Redis ngay khi chạy server để nó in ra log kết nối
 require("./config/redis");
@@ -28,26 +31,15 @@ app.set("trust proxy", 1);
 app.use(cors(CORS_OPTIONS));
 app.use(express.urlencoded({ extended: false }));
 app.use(express.json());
+app.use(cookieParser());
 
 // --- Routes ---
 app.use("/api", healthRoute);
+app.use("/api/auth", authRoute);
 
 // --- Middleware Xử lý 404 ---
-app.use((_req, res) => {
-  res.status(404).json({
-    ok: false,
-    message: "Resource not found",
-  });
-});
-
-// --- Middleware Xử lý Lỗi Cuối cùng ---
-app.use((err, _req, res, _next) => {
-  console.error(err);
-  res.status(500).json({
-    ok: false,
-    message: "Internal server error",
-  });
-});
+app.use(notFoundHandler);
+app.use(errorHandler);
 
 // --- Khởi động server ---
 app.listen(PORT, () => {
