@@ -24,6 +24,14 @@ pnpm-debug.log*
 # Local tool artifacts
 client/.flowbite-react/
 
+# CSV sync runtime folders
+data/import/*
+!data/import/.gitkeep
+data/archive/*
+!data/archive/.gitkeep
+data/error/*
+!data/error/.gitkeep
+
 # Editor settings
 .vscode/*
 !.vscode/extensions.json
