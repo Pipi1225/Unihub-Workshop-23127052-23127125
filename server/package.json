@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "dev": "nodemon src/server.js"
+    "dev": "nodemon src/server.js",
+    "csv:sync": "node src/scripts/runCsvSyncOnce.js"
   },
   "keywords": [],
   "author": "",
@@ -16,10 +17,12 @@
     "bullmq": "^5.76.2",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
+    "csv-parser": "^3.2.0",
     "express": "^5.2.1",
     "google-auth-library": "^9.15.0",
     "ioredis": "^5.10.1",
     "jsonwebtoken": "^9.0.2",
+    "node-cron": "^4.2.1",
     "pg": "^8.20.0"
   },
   "devDependencies": {

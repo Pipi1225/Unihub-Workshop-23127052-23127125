@@ -11,8 +11,9 @@ const healthRoute = require("./routes/healthRoute");
 const authRoute = require("./routes/authRoute");
 const { errorHandler, notFoundHandler } = require("./middlewares/errorHandler");
 
-// Khởi tạo Redis ngay khi chạy server để nó in ra log kết nối
-require("./config/redis");
+// --- Background Jobs & Services ---
+const redisClient = require("./config/redis");
+const { bootstrapCsvSyncScheduler, stopCsvSyncScheduler } = require("./config/csvSyncScheduler");
 
 const PORT = Number(process.env.PORT || 4000);
 
@@ -42,6 +43,32 @@ app.use(notFoundHandler);
 app.use(errorHandler);
 
 // --- Khởi động server ---
-app.listen(PORT, () => {
+const server = app.listen(PORT, async () => {
   console.log(`Server listening at http://localhost:${PORT}`);
+
+  // Bootstrap CSV sync scheduler
+  try {
+    await bootstrapCsvSyncScheduler(redisClient);
+  } catch (err) {
+    console.error("Failed to bootstrap CSV sync scheduler:", err.message);
+  }
+});
+
+// --- Graceful Shutdown ---
+process.on("SIGINT", () => {
+  console.log("\nShutting down gracefully...");
+  stopCsvSyncScheduler();
+  server.close(() => {
+    console.log("Server closed");
+    process.exit(0);
+  });
+});
+
+process.on("SIGTERM", () => {
+  console.log("\nShutting down gracefully (SIGTERM)...");
+  stopCsvSyncScheduler();
+  server.close(() => {
+    console.log("Server closed");
+    process.exit(0);
+  });
 });
