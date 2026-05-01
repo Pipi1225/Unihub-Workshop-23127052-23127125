@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Workshop Ticket</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        background: #f5f5f5;
+        margin: 0;
+        padding: 24px;
+        color: #1d1d1d;
+      }
+      .card {
+        max-width: 640px;
+        margin: 0 auto;
+        background: #ffffff;
+        border-radius: 12px;
+        padding: 24px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+      }
+      .title {
+        font-size: 22px;
+        margin: 0 0 8px;
+      }
+      .subtitle {
+        color: #555;
+        margin-top: 0;
+      }
+      .ticket {
+        margin-top: 16px;
+        padding: 16px;
+        background: #f0f7ff;
+        border-radius: 10px;
+      }
+      .hash {
+        font-family: "Courier New", monospace;
+        font-size: 14px;
+        background: #e8eef7;
+        padding: 8px 12px;
+        border-radius: 8px;
+        display: inline-block;
+      }
+      .footer {
+        margin-top: 24px;
+        font-size: 12px;
+        color: #777;
+      }
+      .link {
+        color: #0a58ca;
+        text-decoration: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1 class="title">Workshop Ticket</h1>
+      <p class="subtitle">Hello {{full_name}},</p>
+      <p>Thank you for registering. Here is your ticket information:</p>
+
+      <div class="ticket">
+        <p><strong>Workshop:</strong> {{workshop_name}}</p>
+        <p><strong>Time:</strong> {{workshop_time}}</p>
+        <p><strong>QR Code Hash:</strong></p>
+        <div class="hash">{{qr_code_hash}}</div>
+        <p style="margin-top: 12px;">
+          <a class="link" href="{{qr_code_url}}">View QR Code</a>
+        </p>
+        <div style="margin-top: 16px;">
+          <img
+            src="{{qr_code_image}}"
+            alt="QR Code"
+            style="width: 220px; height: 220px; border-radius: 8px; border: 1px solid #e0e0e0;"
+          />
+        </div>
+      </div>
+
+      <p class="footer">
+        If you have questions, please contact the event organizer.
+      </p>
+    </div>
+  </body>
+</html>
