@@ -9,6 +9,7 @@ const createCorsOptions = require("./config/cors");
 const createSupabaseClient = require("./config/supabase");
 const healthRoute = require("./routes/healthRoute");
 const authRoute = require("./routes/authRoute");
+const paymentRoute = require("./routes/paymentRoute");
 const { errorHandler, notFoundHandler } = require("./middlewares/errorHandler");
 
 // Khởi tạo Redis ngay khi chạy server để nó in ra log kết nối
@@ -36,6 +37,7 @@ app.use(cookieParser());
 // --- Routes ---
 app.use("/api", healthRoute);
 app.use("/api/auth", authRoute);
+app.use("/api/payments", paymentRoute);
 
 // --- Middleware Xử lý 404 ---
 app.use(notFoundHandler);
