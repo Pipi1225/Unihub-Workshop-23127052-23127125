@@ -9,6 +9,7 @@ const createCorsOptions = require("./config/cors");
 const createSupabaseClient = require("./config/supabase");
 const healthRoute = require("./routes/healthRoute");
 const authRoute = require("./routes/authRoute");
+const paymentRoute = require("./routes/paymentRoute");
 const qrRoute = require("./routes/qrRoute");
 const { errorHandler, notFoundHandler } = require("./middlewares/errorHandler");
 
@@ -38,6 +39,7 @@ app.use(cookieParser());
 // --- Routes ---
 app.use("/api", healthRoute);
 app.use("/api/auth", authRoute);
+app.use("/api/payments", paymentRoute);
 app.use("/api/qr", qrRoute);
 
 // --- Middleware Xử lý 404 ---
