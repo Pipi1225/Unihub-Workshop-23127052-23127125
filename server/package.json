@@ -4,7 +4,9 @@
   "main": "index.js",
   "scripts": {
     "dev": "nodemon src/server.js",
-    "csv:sync": "node src/scripts/runCsvSyncOnce.js"
+    "csv:sync": "node src/scripts/runCsvSyncOnce.js",
+    "worker:notification": "nodemon src/workers/notificationWorker.js",
+    "notification:enqueue": "node src/scripts/enqueueNotificationBatch.js"
   },
   "keywords": [],
   "author": "",
@@ -22,6 +24,8 @@
     "google-auth-library": "^9.15.0",
     "ioredis": "^5.10.1",
     "jsonwebtoken": "^9.0.2",
+    "qrcode": "^1.5.4",
+    "nodemailer": "^6.10.1",
     "node-cron": "^4.2.1",
     "pg": "^8.20.0"
   },
