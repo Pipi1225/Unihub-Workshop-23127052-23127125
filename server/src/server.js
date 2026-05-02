@@ -11,6 +11,7 @@ const healthRoute = require("./routes/healthRoute");
 const authRoute = require("./routes/authRoute");
 const paymentRoute = require("./routes/paymentRoute");
 const qrRoute = require("./routes/qrRoute");
+const registrationRoute = require("./routes/registrationRoute");
 const { errorHandler, notFoundHandler } = require("./middlewares/errorHandler");
 
 // --- Background Jobs & Services ---
@@ -41,6 +42,7 @@ app.use("/api", healthRoute);
 app.use("/api/auth", authRoute);
 app.use("/api/payments", paymentRoute);
 app.use("/api/qr", qrRoute);
+app.use("/api/registrations", registrationRoute);
 
 // --- Middleware Xử lý 404 ---
 app.use(notFoundHandler);
