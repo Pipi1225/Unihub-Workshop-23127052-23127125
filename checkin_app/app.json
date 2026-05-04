@@ -1,0 +1,20 @@
+{
+  "expo": {
+    "name": "Checkin App",
+    "slug": "checkin-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "platforms": ["android", "ios"],
+    "jsEngine": "hermes",
+    "android": {
+      "package": "com.fptu.checkinapp",
+      "permissions": ["RECEIVE_BOOT_COMPLETED"]
+    },
+    "ios": {
+      "bundleIdentifier": "com.fptu.checkinapp",
+      "infoPlist": {
+        "UIBackgroundModes": ["fetch"]
+      }
+    }
+  }
+}
