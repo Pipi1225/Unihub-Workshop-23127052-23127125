@@ -3,6 +3,7 @@ require("dotenv").config();
 
 // --- Express Setup & Middleware ---
 const express = require("express");
+const path = require("path");
 const cors = require("cors");
 const cookieParser = require("cookie-parser");
 const createCorsOptions = require("./config/cors");
@@ -12,6 +13,7 @@ const authRoute = require("./routes/authRoute");
 const paymentRoute = require("./routes/paymentRoute");
 const qrRoute = require("./routes/qrRoute");
 const registrationRoute = require("./routes/registrationRoute");
+const workshopRoute = require("./routes/workshopRoute");
 const { errorHandler, notFoundHandler } = require("./middlewares/errorHandler");
 
 // --- Background Jobs & Services ---
@@ -31,11 +33,18 @@ const CORS_OPTIONS = createCorsOptions(CLIENT_ORIGIN);
 const app = express();
 app.set("trust proxy", 1);
 
+const WORKSHOP_PDF_DIR =
+  process.env.WORKSHOP_PDF_DIR ||
+  path.join(__dirname, "..", "uploads", "workshops");
+const WORKSHOP_PDF_PUBLIC_PATH =
+  process.env.WORKSHOP_PDF_PUBLIC_PATH || "/uploads/workshops";
+
 // --- Cấu hình CORS ---
 app.use(cors(CORS_OPTIONS));
 app.use(express.urlencoded({ extended: false }));
 app.use(express.json());
 app.use(cookieParser());
+app.use(WORKSHOP_PDF_PUBLIC_PATH, express.static(WORKSHOP_PDF_DIR));
 
 // --- Routes ---
 app.use("/api", healthRoute);
@@ -43,6 +52,7 @@ app.use("/api/auth", authRoute);
 app.use("/api/payments", paymentRoute);
 app.use("/api/qr", qrRoute);
 app.use("/api/registrations", registrationRoute);
+app.use("/api/workshops", workshopRoute);
 
 // --- Middleware Xử lý 404 ---
 app.use(notFoundHandler);

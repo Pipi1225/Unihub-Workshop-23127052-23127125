@@ -6,8 +6,13 @@ function notFoundHandler(_req, res) {
 }
 
 function errorHandler(err, _req, res, _next) {
-  const statusCode = err.statusCode || 500;
-  const message = err.message || "Internal server error";
+  let statusCode = err.statusCode || 500;
+  let message = err.message || "Internal server error";
+
+  if (err.code === "LIMIT_FILE_SIZE") {
+    statusCode = 400;
+    message = "File too large. Max size is 5MB.";
+  }
 
   if (statusCode >= 500) {
     console.error(err);
