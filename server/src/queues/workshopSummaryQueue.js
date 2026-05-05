@@ -1,13 +1,10 @@
-const { Queue, QueueScheduler } = require("bullmq");
+const { Queue } = require("bullmq");
 const { createQueueConnection } = require("../config/queueConnection");
 
 const WORKSHOP_SUMMARY_QUEUE = "workshop_summary_queue";
 
 const connection = createQueueConnection();
 const workshopSummaryQueue = new Queue(WORKSHOP_SUMMARY_QUEUE, {
-  connection,
-});
-const workshopSummaryScheduler = new QueueScheduler(WORKSHOP_SUMMARY_QUEUE, {
   connection,
 });
 
@@ -31,6 +28,5 @@ async function enqueueWorkshopSummary(payload) {
 module.exports = {
   WORKSHOP_SUMMARY_QUEUE,
   workshopSummaryQueue,
-  workshopSummaryScheduler,
   enqueueWorkshopSummary,
 };

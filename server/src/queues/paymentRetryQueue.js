@@ -1,13 +1,10 @@
-const { Queue, QueueScheduler } = require("bullmq");
+const { Queue } = require("bullmq");
 const { createQueueConnection } = require("../config/queueConnection");
 
 const PAYMENT_RETRY_QUEUE = "payment_retry_queue";
 
 const connection = createQueueConnection();
 const paymentRetryQueue = new Queue(PAYMENT_RETRY_QUEUE, { connection });
-const paymentRetryScheduler = new QueueScheduler(PAYMENT_RETRY_QUEUE, {
-  connection,
-});
 
 function buildRetryJobOptions() {
   return {
@@ -29,6 +26,5 @@ async function enqueuePaymentRetry(payload) {
 module.exports = {
   PAYMENT_RETRY_QUEUE,
   paymentRetryQueue,
-  paymentRetryScheduler,
   enqueuePaymentRetry,
 };
