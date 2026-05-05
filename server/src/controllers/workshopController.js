@@ -6,6 +6,11 @@ async function listWorkshops(req, res) {
   return res.status(200).json({ ok: true, data: workshops });
 }
 
+async function getWorkshop(req, res) {
+  const workshop = await workshopService.getWorkshopById(req.params?.id);
+  return res.status(200).json({ ok: true, data: workshop });
+}
+
 async function createWorkshop(req, res) {
   const workshop = await workshopService.createWorkshop({
     payload: req.body || {},
@@ -32,6 +37,7 @@ async function deleteWorkshop(req, res) {
 
 module.exports = {
   listWorkshops,
+  getWorkshop,
   createWorkshop,
   updateWorkshop,
   deleteWorkshop,

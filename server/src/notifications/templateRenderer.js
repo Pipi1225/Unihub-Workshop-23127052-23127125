@@ -35,6 +35,7 @@ async function renderEmailTemplate(payload) {
   const workshopInfo = payload.workshop_info || {};
   const qrCodeBaseUrl = process.env.QR_CODE_BASE_URL || "";
   const embedMode = resolveEmbedMode();
+  const hasQrCode = Boolean(payload.qr_code_hash);
 
   const qrCodeUrl = workshopInfo.qr_code_url
     || (qrCodeBaseUrl ? `${qrCodeBaseUrl.replace(/\/$/, "")}/${payload.qr_code_hash}` : "");
@@ -67,9 +68,17 @@ async function renderEmailTemplate(payload) {
     workshop_time: workshopInfo.time || workshopInfo.date || "",
     qr_code_url: qrCodeUrl || "#",
     qr_code_image: qrCodeImage,
+    has_qr_code: hasQrCode ? "" : 'style="display:none"',
   };
 
-  return replaceTokens(template, tokens);
+  let result = replaceTokens(template, tokens);
+
+  // If no QR code, remove QR-related sections from HTML
+  if (!hasQrCode) {
+    result = result.replace(/<p><strong>QR Code Hash:[\s\S]*?<\/div>/gi, "");
+  }
+
+  return result;
 }
 
 module.exports = {

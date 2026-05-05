@@ -19,6 +19,12 @@ router.post(
   asyncHandler(registrationController.registerWorkshop),
 );
 
+router.get(
+  "/:id",
+  authorize(["STUDENT"]),
+  asyncHandler(registrationController.getRegistration),
+);
+
 router.put(
   "/sync",
   authorize(["CHECKIN_STAFF"]),

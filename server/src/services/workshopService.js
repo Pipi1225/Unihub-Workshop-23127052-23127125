@@ -59,13 +59,14 @@ function buildWorkshopResponse(workshop) {
   };
 }
 
-function validateWorkshopPayload(payload, { partial = false } = {}) {
+function validateWorkshopPayload(payload, { partial = false, hasFile = false } = {}) {
   const errors = [];
   const title = payload.title?.trim();
   const roomName = payload.room_name?.trim();
   const totalSlots = parseNumber(payload.total_slots);
   const startTime = parseDate(payload.start_time);
   const endTime = parseDate(payload.end_time);
+  const description = payload.description?.trim() || null;
 
   if (!partial || payload.title !== undefined) {
     if (!title) {
@@ -97,6 +98,13 @@ function validateWorkshopPayload(payload, { partial = false } = {}) {
     }
   }
 
+  // Description is required only if no file will be uploaded
+  if (!partial || payload.description !== undefined) {
+    if (!hasFile && !description) {
+      errors.push("Missing description (required if no PDF)");
+    }
+  }
+
   if (startTime && endTime && endTime <= startTime) {
     errors.push("end_time must be after start_time");
   }
@@ -113,7 +121,7 @@ function validateWorkshopPayload(payload, { partial = false } = {}) {
       price: parseNumber(payload.price) || 0,
       start_time: startTime,
       end_time: endTime,
-      description: payload.description?.trim() || null,
+      description,
     },
   };
 }
@@ -140,8 +148,24 @@ async function listWorkshops({ includeAll = false } = {}) {
   return response;
 }
 
+async function getWorkshopById(workshopId) {
+  if (!workshopId) {
+    throw Object.assign(new Error("Missing workshop id"), { statusCode: 400 });
+  }
+
+  const workshop = await prisma.workshops.findUnique({
+    where: { id: workshopId },
+  });
+
+  if (!workshop) {
+    throw Object.assign(new Error("Workshop not found"), { statusCode: 404 });
+  }
+
+  return buildWorkshopResponse(workshop);
+}
+
 async function createWorkshop({ payload, file }) {
-  const { errors, data } = validateWorkshopPayload(payload);
+  const { errors, data } = validateWorkshopPayload(payload, { partial: false, hasFile: !!file });
   if (errors.length) {
     throw Object.assign(new Error(errors.join("; ")), { statusCode: 400 });
   }
@@ -194,7 +218,7 @@ async function updateWorkshop({ workshopId, payload, file }) {
     throw Object.assign(new Error("Missing workshop id"), { statusCode: 400 });
   }
 
-  const { errors, data } = validateWorkshopPayload(payload, { partial: true });
+  const { errors, data } = validateWorkshopPayload(payload, { partial: true, hasFile: !!file });
   if (errors.length) {
     throw Object.assign(new Error(errors.join("; ")), { statusCode: 400 });
   }
@@ -294,6 +318,7 @@ async function deleteWorkshop({ workshopId }) {
 
 module.exports = {
   listWorkshops,
+  getWorkshopById,
   createWorkshop,
   updateWorkshop,
   deleteWorkshop,

@@ -81,7 +81,61 @@ function buildWorkshopInfo(workshop) {
 
   return {
     title: workshop.title,
+    subject: workshop.title,
+    name: workshop.title,
+    workshop_name: workshop.title,
     time: workshop.start_time ? workshop.start_time.toISOString() : "",
+    workshop_time: workshop.start_time ? new Date(workshop.start_time).toLocaleString() : "",
+  };
+}
+
+async function getRegistrationById({ registrationId, userId }) {
+  if (!registrationId) {
+    throw Object.assign(new Error("Missing registration_id"), { statusCode: 400 });
+  }
+
+  const registration = await prisma.registrations.findFirst({
+    where: {
+      id: registrationId,
+      user_id: userId,
+    },
+    include: {
+      users: {
+        select: {
+          full_name: true,
+          email: true,
+        },
+      },
+      workshops: {
+        select: {
+          title: true,
+          room_name: true,
+          speaker_name: true,
+          price: true,
+          is_paid: true,
+        },
+      },
+    },
+  });
+
+  if (!registration) {
+    throw Object.assign(new Error("Registration not found"), { statusCode: 404 });
+  }
+
+  return {
+    id: registration.id,
+    registration_id: registration.id,
+    full_name: registration.users?.full_name || "",
+    email: registration.users?.email || "",
+    phone_number: "",
+    amount: registration.workshops?.price || 0,
+    payment_status: registration.payment_status,
+    workshop: {
+      title: registration.workshops?.title || "",
+      room_name: registration.workshops?.room_name || "",
+      speaker_name: registration.workshops?.speaker_name || "",
+      is_paid: Boolean(registration.workshops?.is_paid),
+    },
   };
 }
 
@@ -171,14 +225,16 @@ async function registerWorkshop({ userId, workshopId }) {
 
   const { user, workshop, registration } = registrationResult;
 
-  if (!workshop.is_paid) {
-    await enqueueNotification({
-      user_email: user.email,
-      full_name: user.full_name,
-      workshop_info: buildWorkshopInfo(workshop),
-      qr_code_hash: registration.qr_code_hash,
-    });
-  } else {
+  // Send QR ticket email for all registrations (free or paid)
+  await enqueueNotification({
+    user_email: user.email,
+    full_name: user.full_name,
+    workshop_info: buildWorkshopInfo(workshop),
+    qr_code_hash: registration.qr_code_hash,
+  });
+
+  // For paid workshops, schedule hold expiry (unpaid registrations auto-cancel after timeout)
+  if (workshop.is_paid) {
     const delayMs = Math.max(HOLD_MINUTES, 1) * 60 * 1000;
     await enqueueHoldExpiry(
       {
@@ -357,6 +413,7 @@ async function syncCheckins({ items }) {
 
 module.exports = {
   registerWorkshop,
+  getRegistrationById,
   expireRegistrationHold,
   getSyncData,
   syncCheckins,

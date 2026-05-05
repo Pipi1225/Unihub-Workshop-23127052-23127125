@@ -15,6 +15,8 @@ const workshopListLimiter = createRateLimiter({
 
 router.get("/", workshopListLimiter, asyncHandler(workshopController.listWorkshops));
 
+router.get("/:id", asyncHandler(workshopController.getWorkshop));
+
 router.post(
   "/",
   authorize(["ORGANIZER"]),

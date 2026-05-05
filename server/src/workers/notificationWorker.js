@@ -32,10 +32,6 @@ const worker = new Worker(
       throw new UnrecoverableError("Missing full_name");
     }
 
-    if (!payload.qr_code_hash) {
-      throw new UnrecoverableError("Missing qr_code_hash");
-    }
-
     await notificationService.send({
       ...payload,
       user_email: userEmail,

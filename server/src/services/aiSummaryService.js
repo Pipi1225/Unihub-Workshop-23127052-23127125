@@ -3,11 +3,11 @@ const pdfParse = require("pdf-parse");
 
 const PROMPT =
   process.env.AI_SUMMARY_PROMPT ||
-  "Hay tom tat noi dung su kien nay trong 150 chu, tieng Viet, ngan gon va de hieu.";
+  "Hay chi tom tat phan noi dung chinh cua workshop trong 150 chu, tieng Viet, ngan gon va de hieu. Neu PDF co metadata nhu ten giang vien, dia diem, so cho, gia ve, ngay gio, hay bo qua chung va KHONG dua vao ban tom tat. Chi tap trung vao noi dung, muc dich, chu de, hoat dong hoac loi ich cua workshop.";
 const MAX_CHARS = Number(process.env.AI_SUMMARY_MAX_CHARS || 12000);
 const GEMINI_ENDPOINT =
   process.env.GEMINI_API_URL ||
-  "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent";
+  "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
 const OPENAI_ENDPOINT =
   process.env.OPENAI_API_URL || "https://api.openai.com/v1/chat/completions";
 
