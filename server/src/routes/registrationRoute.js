@@ -19,4 +19,10 @@ router.post(
   asyncHandler(registrationController.registerWorkshop),
 );
 
+router.put(
+  "/sync",
+  authorize(["CHECKIN_STAFF"]),
+  asyncHandler(registrationController.syncRegistrations),
+);
+
 module.exports = router;

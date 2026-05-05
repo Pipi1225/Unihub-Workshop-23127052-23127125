@@ -7,6 +7,7 @@
     "csv:sync": "node src/scripts/runCsvSyncOnce.js",
     "worker:notification": "nodemon src/workers/notificationWorker.js",
     "worker:registration": "nodemon src/workers/registrationWorker.js",
+    "worker:payment": "nodemon src/workers/paymentRetryWorker.js",
     "worker:workshop": "nodemon src/workers/workshopSummaryWorker.js",
     "notification:enqueue": "node src/scripts/enqueueNotificationBatch.js"
   },

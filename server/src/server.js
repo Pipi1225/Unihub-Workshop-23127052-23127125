@@ -13,6 +13,7 @@ const authRoute = require("./routes/authRoute");
 const paymentRoute = require("./routes/paymentRoute");
 const qrRoute = require("./routes/qrRoute");
 const registrationRoute = require("./routes/registrationRoute");
+const syncRoute = require("./routes/syncRoute");
 const workshopRoute = require("./routes/workshopRoute");
 const { errorHandler, notFoundHandler } = require("./middlewares/errorHandler");
 
@@ -52,6 +53,7 @@ app.use("/api/auth", authRoute);
 app.use("/api/payments", paymentRoute);
 app.use("/api/qr", qrRoute);
 app.use("/api/registrations", registrationRoute);
+app.use("/api", syncRoute);
 app.use("/api/workshops", workshopRoute);
 
 // --- Middleware Xử lý 404 ---

@@ -237,7 +237,127 @@ async function expireRegistrationHold({ registrationId }) {
   });
 }
 
+function parseCheckinTime(value) {
+  if (!value) {
+    return new Date();
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  return date;
+}
+
+async function getSyncData({ workshopId }) {
+  if (!workshopId) {
+    throw Object.assign(new Error("Missing workshop_id"), { statusCode: 400 });
+  }
+
+  const registrations = await prisma.registrations.findMany({
+    where: {
+      workshop_id: workshopId,
+      payment_status: "PAID",
+    },
+    include: {
+      users: {
+        select: { full_name: true },
+      },
+    },
+  });
+
+  return registrations.map((row) => ({
+    registration_id: row.id,
+    qr_code_hash: row.qr_code_hash,
+    workshop_id: row.workshop_id,
+    full_name: row.users?.full_name || "",
+    checkin_status: Boolean(row.checkin_status),
+    checkin_time: row.checkin_time ? row.checkin_time.toISOString() : null,
+  }));
+}
+
+async function syncCheckins({ items }) {
+  if (!Array.isArray(items)) {
+    throw Object.assign(new Error("Invalid sync payload"), { statusCode: 400 });
+  }
+
+  const result = {
+    ok: true,
+    updated: 0,
+    skipped: 0,
+    conflicts: [],
+    errors: [],
+  };
+
+  for (const item of items) {
+    const registrationId = String(item?.registration_id || item?.id || "").trim();
+    const qrHash = String(item?.qr_code_hash || "").trim();
+    const workshopId = String(item?.workshop_id || "").trim();
+    const incomingTime = parseCheckinTime(item?.checkin_time);
+
+    if (!registrationId && !(qrHash && workshopId)) {
+      result.errors.push({
+        item,
+        message: "Missing registration_id or qr_code_hash/workshop_id",
+      });
+      continue;
+    }
+
+    if (!incomingTime) {
+      result.errors.push({ item, message: "Invalid checkin_time" });
+      continue;
+    }
+
+    const registration = await prisma.registrations.findFirst({
+      where: registrationId
+        ? { id: registrationId }
+        : { qr_code_hash: qrHash, workshop_id: workshopId },
+    });
+
+    if (!registration) {
+      result.errors.push({ item, message: "Registration not found" });
+      continue;
+    }
+
+    if (registration.payment_status !== "PAID") {
+      result.errors.push({ item, message: "Registration not paid" });
+      continue;
+    }
+
+    const updateResult = await prisma.registrations.updateMany({
+      where: {
+        id: registration.id,
+        OR: [
+          { checkin_time: null },
+          { checkin_time: { gt: incomingTime } },
+          { checkin_status: false },
+        ],
+      },
+      data: {
+        checkin_status: true,
+        checkin_time: incomingTime,
+      },
+    });
+
+    if (updateResult.count === 0) {
+      result.conflicts.push({
+        registration_id: registration.id,
+        message: "Check-in already recorded with earlier time",
+      });
+      result.skipped += 1;
+      continue;
+    }
+
+    result.updated += 1;
+  }
+
+  return result;
+}
+
 module.exports = {
   registerWorkshop,
   expireRegistrationHold,
+  getSyncData,
+  syncCheckins,
 };

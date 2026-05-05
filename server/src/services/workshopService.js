@@ -55,6 +55,7 @@ function buildWorkshopResponse(workshop) {
     end_time: workshop.end_time?.toISOString(),
     pdf_url: workshop.pdf_url,
     ai_status: workshop.ai_status,
+    ai_summary_status: workshop.ai_status,
   };
 }
 
@@ -226,7 +227,7 @@ async function updateWorkshop({ workshopId, payload, file }) {
       const soldCount = await tx.registrations.count({
         where: {
           workshop_id: workshopId,
-          payment_status: { not: "CANCELLED" },
+          payment_status: { in: ["PAID", "PENDING"] },
         },
       });
 

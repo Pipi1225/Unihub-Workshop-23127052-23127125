@@ -17,7 +17,7 @@ async function processPayment(req, res) {
     idempotencyKey,
   });
 
-  const statusCode = result.ok ? 200 : 503;
+  const statusCode = result.statusCode || (result.ok ? 200 : 503);
   return res.status(statusCode).json(result);
 }
 
