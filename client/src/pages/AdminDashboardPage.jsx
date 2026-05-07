@@ -31,6 +31,10 @@ export default function AdminDashboardPage() {
     }
   };
 
+  const copyToClipboard = (text) => {
+    navigator.clipboard.writeText(text);
+  };
+
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -88,6 +92,7 @@ export default function AdminDashboardPage() {
               <thead className="bg-gray-50 border-b">
                 <tr>
                   <th className="px-4 py-3 font-semibold text-gray-800">Tiêu đề</th>
+                  <th className="px-4 py-3 font-semibold text-gray-800">ID</th>
                   <th className="px-4 py-3 font-semibold text-gray-800">Thời gian</th>
                   <th className="px-4 py-3 font-semibold text-gray-800">Giá</th>
                   <th className="px-4 py-3 font-semibold text-gray-800">Chỗ</th>
@@ -102,6 +107,15 @@ export default function AdminDashboardPage() {
                       <a href={`/workshops/${workshop.id}`} className="text-blue-600 hover:underline">
                         {workshop.title}
                       </a>
+                    </td>
+                    <td className="px-4 py-3">
+                      <code
+                        onClick={() => copyToClipboard(workshop.id)}
+                        className="text-xs bg-gray-100 px-2 py-1 rounded text-gray-700 cursor-pointer hover:bg-blue-100 hover:text-blue-700 transition-colors"
+                        title="Click để copy"
+                      >
+                        {workshop.id}
+                      </code>
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-600">
                       {formatDate(workshop.start_time)}
