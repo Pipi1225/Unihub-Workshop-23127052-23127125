@@ -4,6 +4,7 @@
   "main": "index.js",
   "scripts": {
     "dev": "nodemon src/server.js",
+    "dev:all": "concurrently -k \"nodemon src/server.js\" \"nodemon src/workers/notificationWorker.js\"",
     "csv:sync": "node src/scripts/runCsvSyncOnce.js",
     "worker:notification": "nodemon src/workers/notificationWorker.js",
     "worker:registration": "nodemon src/workers/registrationWorker.js",
@@ -36,6 +37,7 @@
   },
   "devDependencies": {
     "@types/node": "^25.6.0",
+    "concurrently": "^9.2.1",
     "dotenv": "^17.4.2",
     "nodemon": "^3.1.14",
     "prisma": "^7.8.0"

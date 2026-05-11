@@ -16,6 +16,25 @@ function parseAllowedDomains(rawValue) {
     .filter(Boolean);
 }
 
+function parseAllowedEmails(rawValue) {
+  if (!rawValue) {
+    return [];
+  }
+
+  return String(rawValue)
+    .split(",")
+    .map((email) => email.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function isEmailInList(email, allowedEmails) {
+  if (!allowedEmails.length) {
+    return false;
+  }
+
+  return allowedEmails.includes(String(email).toLowerCase());
+}
+
 function isEmailAllowed(email, allowedDomains) {
   if (!allowedDomains.length) {
     return true;
@@ -42,11 +61,19 @@ async function verifyGoogleCredential(credential) {
     throw Object.assign(new Error("Invalid Google token"), { statusCode: 401 });
   }
 
-  const allowedDomains = parseAllowedDomains(process.env.ALLOWED_EMAIL_DOMAINS);
-  if (!isEmailAllowed(payload.email, allowedDomains)) {
-    throw Object.assign(new Error("Email domain is not allowed"), {
-      statusCode: 403,
-    });
+  const allowedAdminEmails = parseAllowedEmails(
+    process.env.ALLOWED_ADMIN_EMAILS,
+  );
+
+  if (!isEmailInList(payload.email, allowedAdminEmails)) {
+    const allowedDomains = parseAllowedDomains(
+      process.env.ALLOWED_EMAIL_DOMAINS,
+    );
+    if (!isEmailAllowed(payload.email, allowedDomains)) {
+      throw Object.assign(new Error("Email domain is not allowed"), {
+        statusCode: 403,
+      });
+    }
   }
 
   return payload;

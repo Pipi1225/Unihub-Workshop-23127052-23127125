@@ -1,7 +1,7 @@
-import { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { workshopService } from '../services';
-import { formatDateInput } from '../utils/helpers';
+import { useState, useEffect, useRef } from "react";
+import { useParams, useNavigate } from "react-router-dom";
+import { workshopService } from "../services";
+import { formatDateInput } from "../utils/helpers";
 
 export default function AdminWorkshopManagementPage() {
   const { id } = useParams();
@@ -13,19 +13,22 @@ export default function AdminWorkshopManagementPage() {
   const [error, setError] = useState(null);
 
   const [formData, setFormData] = useState({
-    title: '',
-    description: '',
-    price: '',
-    location: '',
-    instructor: '',
-    total_slots: '',
-    start_time: '',
-    end_time: '',
-    thumbnail: '',
+    title: "",
+    description: "",
+    price: "",
+    location: "",
+    room_map_url: "",
+    instructor: "",
+    total_slots: "",
+    start_time: "",
+    end_time: "",
+    thumbnail: "",
   });
 
   const [selectedFile, setSelectedFile] = useState(null);
+  const [roomMapFile, setRoomMapFile] = useState(null);
   const fileInputRef = useRef(null);
+  const roomMapInputRef = useRef(null);
 
   useEffect(() => {
     if (isEditing) {
@@ -38,19 +41,20 @@ export default function AdminWorkshopManagementPage() {
       setLoading(true);
       const data = await workshopService.getWorkshop(id);
       setFormData({
-        title: data.title || '',
-        description: data.description || '',
-        price: data.price || '',
-        location: data.room_name || '',
-        instructor: data.speaker_name || '',
-        total_slots: data.total_slots || '',
-        start_time: formatDateInput(data.start_time) || '',
-        end_time: formatDateInput(data.end_time) || '',
-        thumbnail: data.thumbnail || '',
+        title: data.title || "",
+        description: data.description || "",
+        price: data.price || "",
+        location: data.room_name || "",
+        room_map_url: data.room_map_url || "",
+        instructor: data.speaker_name || "",
+        total_slots: data.total_slots || "",
+        start_time: formatDateInput(data.start_time) || "",
+        end_time: formatDateInput(data.end_time) || "",
+        thumbnail: data.thumbnail || "",
       });
       setError(null);
     } catch (err) {
-      setError('Lỗi khi tải workshop');
+      setError("Lỗi khi tải workshop");
       console.error(err);
     } finally {
       setLoading(false);
@@ -69,8 +73,16 @@ export default function AdminWorkshopManagementPage() {
     setSelectedFile(e.target.files[0]);
   };
 
+  const handleRoomMapChange = (e) => {
+    setRoomMapFile(e.target.files[0]);
+  };
+
   const handleOpenFilePicker = () => {
     fileInputRef.current?.click();
+  };
+
+  const handleOpenRoomMapPicker = () => {
+    roomMapInputRef.current?.click();
   };
 
   const handleSubmit = async (e) => {
@@ -83,6 +95,7 @@ export default function AdminWorkshopManagementPage() {
         title: formData.title,
         description: formData.description,
         room_name: formData.location,
+        room_map_url: formData.room_map_url,
         speaker_name: formData.instructor,
         total_slots: Number(formData.total_slots),
         start_time: formData.start_time,
@@ -95,27 +108,39 @@ export default function AdminWorkshopManagementPage() {
         ? (() => {
             const multipart = new FormData();
             Object.entries(normalizedPayload).forEach(([key, value]) => {
-              multipart.append(key, String(value ?? ''));
+              multipart.append(key, String(value ?? ""));
             });
-            multipart.append('pdf', selectedFile);
+            multipart.append("pdf", selectedFile);
+            if (roomMapFile) {
+              multipart.append("room_map", roomMapFile);
+            }
             return multipart;
           })()
-        : normalizedPayload;
+        : roomMapFile
+          ? (() => {
+              const multipart = new FormData();
+              Object.entries(normalizedPayload).forEach(([key, value]) => {
+                multipart.append(key, String(value ?? ""));
+              });
+              multipart.append("room_map", roomMapFile);
+              return multipart;
+            })()
+          : normalizedPayload;
 
       if (isEditing) {
         await workshopService.updateWorkshop(id, dataToSend);
       } else {
         const response = await workshopService.createWorkshop(dataToSend);
 
-        alert('Tạo workshop thành công');
+        alert("Tạo workshop thành công");
         navigate(`/workshops/${response.id}`);
         return;
       }
 
-      alert('Cập nhật thành công');
+      alert("Cập nhật thành công");
       navigate(`/workshops/${id}`);
     } catch (err) {
-      setError(err.response?.data?.message || 'Lỗi khi lưu workshop');
+      setError(err.response?.data?.message || "Lỗi khi lưu workshop");
       console.error(err);
     } finally {
       setSubmitting(false);
@@ -133,7 +158,7 @@ export default function AdminWorkshopManagementPage() {
   return (
     <div className="max-w-2xl mx-auto">
       <h1 className="text-3xl font-bold text-gray-800 mb-6">
-        {isEditing ? 'Sửa Workshop' : 'Tạo Workshop Mới'}
+        {isEditing ? "Sửa Workshop" : "Tạo Workshop Mới"}
       </h1>
 
       <form onSubmit={handleSubmit} className="bg-white rounded-lg shadow p-8">
@@ -146,7 +171,9 @@ export default function AdminWorkshopManagementPage() {
         <div className="space-y-6">
           {/* Title */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Tiêu đề *</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Tiêu đề *
+            </label>
             <input
               type="text"
               name="title"
@@ -161,7 +188,7 @@ export default function AdminWorkshopManagementPage() {
           {/* Description */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Mô tả {!selectedFile && '*'}
+              Mô tả {!selectedFile && "*"}
             </label>
             <textarea
               name="description"
@@ -170,16 +197,24 @@ export default function AdminWorkshopManagementPage() {
               required={!selectedFile}
               rows="5"
               className="w-full px-4 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-600"
-              placeholder={selectedFile ? 'Không bắt buộc - AI sẽ tự sinh từ PDF' : 'Nhập mô tả workshop'}
+              placeholder={
+                selectedFile
+                  ? "Không bắt buộc - AI sẽ tự sinh từ PDF"
+                  : "Nhập mô tả workshop"
+              }
             />
             {selectedFile && (
-              <p className="text-xs text-green-600 mt-2">✓ AI sẽ tự tóm tắt PDF thành mô tả sau khi tạo</p>
+              <p className="text-xs text-green-600 mt-2">
+                ✓ AI sẽ tự tóm tắt PDF thành mô tả sau khi tạo
+              </p>
             )}
           </div>
 
           {/* Price */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Giá (VND) *</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Giá (VND) *
+            </label>
             <input
               type="number"
               name="price"
@@ -193,7 +228,9 @@ export default function AdminWorkshopManagementPage() {
 
           {/* Location */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Địa điểm *</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Địa điểm *
+            </label>
             <input
               type="text"
               name="location"
@@ -207,7 +244,9 @@ export default function AdminWorkshopManagementPage() {
 
           {/* Instructor */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Người hướng dẫn *</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Người hướng dẫn *
+            </label>
             <input
               type="text"
               name="instructor"
@@ -219,9 +258,44 @@ export default function AdminWorkshopManagementPage() {
             />
           </div>
 
+          {/* Room Map */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Sơ đồ phòng
+            </label>
+            <div className="rounded-lg border border-gray-300 bg-gray-50 p-3">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                <button
+                  type="button"
+                  onClick={handleOpenRoomMapPicker}
+                  className="inline-flex items-center justify-center px-4 py-2 rounded-md bg-blue-600 text-white font-medium hover:bg-blue-700 transition"
+                >
+                  Choose Room Map Image
+                </button>
+                <span className="text-sm text-gray-700 break-all">
+                  {roomMapFile ? roomMapFile.name : "Chưa chọn file nào"}
+                </span>
+              </div>
+
+              <input
+                ref={roomMapInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleRoomMapChange}
+                className="hidden"
+              />
+
+              <p className="text-xs text-gray-500 mt-2">
+                Chỉ hỗ trợ ảnh .png, .jpg, .jpeg, .webp.
+              </p>
+            </div>
+          </div>
+
           {/* Total Slots */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Số chỗ *</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Số chỗ *
+            </label>
             <input
               type="number"
               name="total_slots"
@@ -235,7 +309,9 @@ export default function AdminWorkshopManagementPage() {
 
           {/* Start Time */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Thời gian bắt đầu *</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Thời gian bắt đầu *
+            </label>
             <input
               type="datetime-local"
               name="start_time"
@@ -248,7 +324,9 @@ export default function AdminWorkshopManagementPage() {
 
           {/* End Time */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Thời gian kết thúc *</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Thời gian kết thúc *
+            </label>
             <input
               type="datetime-local"
               name="end_time"
@@ -261,7 +339,9 @@ export default function AdminWorkshopManagementPage() {
 
           {/* PDF Upload */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Tải lên PDF (tùy chọn)</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Tải lên PDF (tùy chọn)
+            </label>
             <div className="rounded-lg border border-gray-300 bg-gray-50 p-3">
               <div className="flex flex-col sm:flex-row sm:items-center gap-3">
                 <button
@@ -272,7 +352,7 @@ export default function AdminWorkshopManagementPage() {
                   Choose PDF File
                 </button>
                 <span className="text-sm text-gray-700 break-all">
-                  {selectedFile ? selectedFile.name : 'Chưa chọn file nào'}
+                  {selectedFile ? selectedFile.name : "Chưa chọn file nào"}
                 </span>
               </div>
 
@@ -285,7 +365,7 @@ export default function AdminWorkshopManagementPage() {
               />
 
               <p className="text-xs text-gray-500 mt-2">
-                Chỉ hỗ trợ file .pdf. Bạn có thể dùng file mẫu tại{' '}
+                Chỉ hỗ trợ file .pdf. Bạn có thể dùng file mẫu tại{" "}
                 <a
                   href="/Workshop_Sample.pdf"
                   target="_blank"
@@ -305,7 +385,7 @@ export default function AdminWorkshopManagementPage() {
             disabled={submitting}
             className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition font-semibold"
           >
-            {submitting ? 'Đang lưu...' : isEditing ? 'Cập nhật' : 'Tạo mới'}
+            {submitting ? "Đang lưu..." : isEditing ? "Cập nhật" : "Tạo mới"}
           </button>
         </div>
       </form>

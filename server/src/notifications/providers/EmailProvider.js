@@ -16,7 +16,7 @@ function resolveEmbedMode() {
     return explicit;
   }
 
-  return parseBoolean(process.env.QR_CODE_EMBED, false) ? "data" : "cid";
+  return parseBoolean(process.env.QR_CODE_EMBED, true) ? "data" : "cid";
 }
 
 class EmailProvider extends INotificationProvider {

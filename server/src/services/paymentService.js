@@ -104,7 +104,11 @@ function buildQueuedResponse(payment, registrationId, message) {
   };
 }
 
-async function settlePaymentSuccess({ paymentId, registrationId, gatewayResponse }) {
+async function settlePaymentSuccess({
+  paymentId,
+  registrationId,
+  gatewayResponse,
+}) {
   const { enqueueNotification } = require("../notifications/notificationQueue");
 
   const [updatedPayment] = await prisma.$transaction([
@@ -137,13 +141,18 @@ async function settlePaymentSuccess({ paymentId, registrationId, gatewayResponse
       user_email: registration.users?.email,
       full_name: registration.users?.full_name || "",
       workshop_info: {
-        title: `Payment Confirmation - ${registration.workshops?.title || "Workshop"}`,
-        subject: `Payment Confirmation for ${registration.workshops?.title || "Workshop"}`,
+        title: registration.workshops?.title || "Workshop",
+        subject: `Workshop Ticket - ${registration.workshops?.title || "Workshop"}`,
+        name: registration.workshops?.title || "",
         workshop_name: registration.workshops?.title || "",
+        time: registration.workshops?.start_time
+          ? registration.workshops.start_time.toISOString()
+          : "",
         workshop_time: registration.workshops?.start_time
           ? new Date(registration.workshops.start_time).toLocaleString()
           : "",
       },
+      qr_code_hash: registration.qr_code_hash,
     });
   }
 

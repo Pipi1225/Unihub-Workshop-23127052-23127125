@@ -12,12 +12,14 @@ function parseBoolean(value, fallback = false) {
 }
 
 function resolveEmbedMode() {
-  const explicit = String(process.env.QR_CODE_EMBED_MODE || "").trim().toLowerCase();
+  const explicit = String(process.env.QR_CODE_EMBED_MODE || "")
+    .trim()
+    .toLowerCase();
   if (explicit) {
     return explicit;
   }
 
-  return parseBoolean(process.env.QR_CODE_EMBED, false) ? "data" : "cid";
+  return parseBoolean(process.env.QR_CODE_EMBED, true) ? "data" : "cid";
 }
 
 function replaceTokens(template, tokens) {
@@ -37,8 +39,11 @@ async function renderEmailTemplate(payload) {
   const embedMode = resolveEmbedMode();
   const hasQrCode = Boolean(payload.qr_code_hash);
 
-  const qrCodeUrl = workshopInfo.qr_code_url
-    || (qrCodeBaseUrl ? `${qrCodeBaseUrl.replace(/\/$/, "")}/${payload.qr_code_hash}` : "");
+  const qrCodeUrl =
+    workshopInfo.qr_code_url ||
+    (qrCodeBaseUrl
+      ? `${qrCodeBaseUrl.replace(/\/$/, "")}/${payload.qr_code_hash}`
+      : "");
 
   let qrCodeImage = qrCodeUrl || "#";
   if (embedMode === "cid" && payload.qr_code_hash) {
@@ -48,7 +53,9 @@ async function renderEmailTemplate(payload) {
   if (embedMode === "data" && payload.qr_code_hash) {
     const width = Number(process.env.QR_CODE_WIDTH || 256);
     const margin = Number(process.env.QR_CODE_MARGIN || 1);
-    const errorCorrectionLevel = String(process.env.QR_CODE_ERROR_LEVEL || "M").toUpperCase();
+    const errorCorrectionLevel = String(
+      process.env.QR_CODE_ERROR_LEVEL || "M",
+    ).toUpperCase();
 
     try {
       qrCodeImage = await QRCode.toDataURL(payload.qr_code_hash, {
@@ -57,7 +64,10 @@ async function renderEmailTemplate(payload) {
         errorCorrectionLevel,
       });
     } catch (error) {
-      console.warn("[templateRenderer] Failed to embed QR image:", error.message);
+      console.warn(
+        "[templateRenderer] Failed to embed QR image:",
+        error.message,
+      );
     }
   }
 
@@ -65,7 +75,11 @@ async function renderEmailTemplate(payload) {
     full_name: payload.full_name || "Student",
     qr_code_hash: payload.qr_code_hash || "N/A",
     workshop_name: workshopInfo.name || workshopInfo.title || "Workshop",
-    workshop_time: workshopInfo.time || workshopInfo.date || "",
+    workshop_time:
+      workshopInfo.workshop_time ||
+      workshopInfo.time ||
+      workshopInfo.date ||
+      "",
     qr_code_url: qrCodeUrl || "#",
     qr_code_image: qrCodeImage,
     has_qr_code: hasQrCode ? "" : 'style="display:none"',

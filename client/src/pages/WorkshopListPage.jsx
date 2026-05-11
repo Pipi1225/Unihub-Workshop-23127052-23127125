@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
-import { workshopService } from '../services';
-import { formatDate, formatPrice } from '../utils/helpers';
+import { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
+import { useAuth } from "../contexts/AuthContext";
+import { workshopService } from "../services";
+import { formatDate, formatPrice } from "../utils/helpers";
 
 export default function WorkshopListPage() {
   const { isAdmin } = useAuth();
@@ -21,7 +21,7 @@ export default function WorkshopListPage() {
       setWorkshops(data);
       setError(null);
     } catch (err) {
-      setError('Lỗi khi tải danh sách workshop');
+      setError("Lỗi khi tải danh sách workshop");
       console.error(err);
     } finally {
       setLoading(false);
@@ -62,47 +62,62 @@ export default function WorkshopListPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {workshops.map((workshop) => (
-            <div key={workshop.id} className="bg-white rounded-lg shadow hover:shadow-lg transition overflow-hidden">
-              {workshop.thumbnail && (
-                <img
-                  src={workshop.thumbnail}
-                  alt={workshop.title}
-                  className="w-full h-48 object-cover"
-                />
-              )}
-              <div className="p-4">
-                <div className="mb-2">
-                  <h3 className="text-lg font-semibold text-gray-800">{workshop.title}</h3>
+          {workshops.map((workshop) => {
+            const availableSlots = Number.isFinite(workshop.available_slots)
+              ? workshop.available_slots
+              : workshop.total_slots - (workshop.sold_count || 0);
+            return (
+              <div
+                key={workshop.id}
+                className="bg-white rounded-lg shadow hover:shadow-lg transition overflow-hidden"
+              >
+                {workshop.thumbnail && (
+                  <img
+                    src={workshop.thumbnail}
+                    alt={workshop.title}
+                    className="w-full h-48 object-cover"
+                  />
+                )}
+                <div className="p-4">
+                  <div className="mb-2">
+                    <h3 className="text-lg font-semibold text-gray-800">
+                      {workshop.title}
+                    </h3>
+                  </div>
+
+                  <p className="text-gray-600 text-sm mb-3 line-clamp-2">
+                    {workshop.description}
+                  </p>
+
+                  <div className="space-y-2 text-sm text-gray-600 mb-4">
+                    <p>
+                      <span className="font-semibold">Giá:</span>{" "}
+                      {formatPrice(workshop.price)}
+                    </p>
+                    <p>
+                      <span className="font-semibold">Thời gian:</span>{" "}
+                      {formatDate(workshop.start_time)}
+                    </p>
+                    <p>
+                      <span className="font-semibold">Địa điểm:</span>{" "}
+                      {workshop.room_name}
+                    </p>
+                    <p>
+                      <span className="font-semibold">Chỗ còn:</span>{" "}
+                      {availableSlots} / {workshop.total_slots}
+                    </p>
+                  </div>
+
+                  <Link
+                    to={`/workshops/${workshop.id}`}
+                    className="block w-full bg-blue-600 text-white text-center py-2 rounded hover:bg-blue-700 transition"
+                  >
+                    Xem chi tiết
+                  </Link>
                 </div>
-
-                <p className="text-gray-600 text-sm mb-3 line-clamp-2">{workshop.description}</p>
-
-                <div className="space-y-2 text-sm text-gray-600 mb-4">
-                  <p>
-                    <span className="font-semibold">Giá:</span> {formatPrice(workshop.price)}
-                  </p>
-                  <p>
-                    <span className="font-semibold">Thời gian:</span> {formatDate(workshop.start_time)}
-                  </p>
-                  <p>
-                    <span className="font-semibold">Địa điểm:</span> {workshop.room_name}
-                  </p>
-                  <p>
-                    <span className="font-semibold">Chỗ còn:</span>{' '}
-                    {workshop.total_slots - (workshop.sold_count || 0)} / {workshop.total_slots}
-                  </p>
-                </div>
-
-                <Link
-                  to={`/workshops/${workshop.id}`}
-                  className="block w-full bg-blue-600 text-white text-center py-2 rounded hover:bg-blue-700 transition"
-                >
-                  Xem chi tiết
-                </Link>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

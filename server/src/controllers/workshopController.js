@@ -12,18 +12,24 @@ async function getWorkshop(req, res) {
 }
 
 async function createWorkshop(req, res) {
+  const pdfFile = req.files?.pdf?.[0] || null;
+  const roomMapFile = req.files?.room_map?.[0] || null;
   const workshop = await workshopService.createWorkshop({
     payload: req.body || {},
-    file: req.file,
+    file: pdfFile,
+    roomMapFile,
   });
   return res.status(201).json({ ok: true, data: workshop });
 }
 
 async function updateWorkshop(req, res) {
+  const pdfFile = req.files?.pdf?.[0] || null;
+  const roomMapFile = req.files?.room_map?.[0] || null;
   const workshop = await workshopService.updateWorkshop({
     workshopId: req.params?.id,
     payload: req.body || {},
-    file: req.file,
+    file: pdfFile,
+    roomMapFile,
   });
   return res.status(200).json({ ok: true, data: workshop });
 }

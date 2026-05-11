@@ -64,7 +64,7 @@ QR_CODE_BASE_URL=http://localhost:4000/api/qr
 QR_CODE_WIDTH=256
 QR_CODE_MARGIN=1
 QR_CODE_ERROR_LEVEL=M
-QR_CODE_EMBED_MODE=cid
+QR_CODE_EMBED_MODE=data
 NOTIFICATION_JOB_ATTEMPTS=5
 NOTIFICATION_WORKER_CONCURRENCY=5
 NOTIFICATION_RATE_LIMIT=50
@@ -78,14 +78,16 @@ NOTIFICATION_TEST_QR=qr-demo-0001
 ```
 
 **Gmail notes:**
+
 - You must enable 2FA and generate an App Password for `SMTP_PASS`.
 - Remove spaces from the App Password (Gmail displays spaces for readability).
 - If Gmail rejects the sender, set `SMTP_FROM` to the same address as `SMTP_USER`.
-- You can switch back to Mailtrap by replacing the SMTP_* values.
+- You can switch back to Mailtrap by replacing the SMTP\_\* values.
 
 **QR embed notes:**
-- `QR_CODE_EMBED_MODE=cid` (recommended): attaches a QR image and embeds it via CID for best Gmail compatibility.
-- `QR_CODE_EMBED_MODE=data`: embeds QR as a data URL (some clients block it).
+
+- `QR_CODE_EMBED_MODE=cid`: attaches a QR image and embeds it via CID for best Gmail compatibility.
+- `QR_CODE_EMBED_MODE=data` (default): embeds QR as a data URL (some clients block it).
 - `QR_CODE_EMBED_MODE=url`: uses a remote image URL (needs a public `QR_CODE_BASE_URL`).
 
 ## How to Run
@@ -109,15 +111,18 @@ npm run notification:enqueue -- --count 1000 --batch 200
 ## Error Handling
 
 ### Provider Down / Timeout
+
 - Worker throws error -> BullMQ retries with backoff.
 - Backoff schedule: 1 min, 3 min, 5 min (then 5 min for remaining attempts).
 - After attempts exhausted, job is added to `notification_dlq`.
 
 ### Invalid Email
+
 - Worker validates email before sending.
 - Invalid email throws `UnrecoverableError` -> no retry -> goes to DLQ.
 
 ### Queue Spike (High Volume)
+
 - Producer only enqueues jobs (fast). UI response is not blocked.
 - Worker limits rate via `NOTIFICATION_RATE_LIMIT` (default 50/sec).
 

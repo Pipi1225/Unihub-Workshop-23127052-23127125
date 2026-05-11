@@ -20,6 +20,12 @@ router.post(
 );
 
 router.get(
+  "/by-workshop/:workshopId",
+  authorize(["STUDENT"]),
+  asyncHandler(registrationController.getRegistrationByWorkshop),
+);
+
+router.get(
   "/:id",
   authorize(["STUDENT"]),
   asyncHandler(registrationController.getRegistration),

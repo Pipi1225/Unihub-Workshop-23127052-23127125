@@ -1,18 +1,22 @@
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider, useAuth } from './contexts/AuthContext';
-import MainLayout from './layouts/MainLayout';
-import { ProtectedRoute } from './components/ProtectedRoute';
+import {
+  BrowserRouter as Router,
+  Routes,
+  Route,
+  Navigate,
+} from "react-router-dom";
+import { AuthProvider, useAuth } from "./contexts/AuthContext";
+import MainLayout from "./layouts/MainLayout";
+import { ProtectedRoute } from "./components/ProtectedRoute";
 
 // Pages
-import LoginPage from './pages/LoginPage';
-import WorkshopListPage from './pages/WorkshopListPage';
-import WorkshopDetailPage from './pages/WorkshopDetailPage';
-import RegistrationPage from './pages/RegistrationPage';
-import PaymentPage from './pages/PaymentPage';
-import AdminWorkshopManagementPage from './pages/AdminWorkshopManagementPage';
-import AdminDashboardPage from './pages/AdminDashboardPage';
+import LoginPage from "./pages/LoginPage";
+import WorkshopListPage from "./pages/WorkshopListPage";
+import WorkshopDetailPage from "./pages/WorkshopDetailPage";
+import PaymentPage from "./pages/PaymentPage";
+import AdminWorkshopManagementPage from "./pages/AdminWorkshopManagementPage";
+import AdminDashboardPage from "./pages/AdminDashboardPage";
 
-import './App.css';
+import "./App.css";
 
 function AppRoutes() {
   const { isAuthenticated } = useAuth();
@@ -26,7 +30,11 @@ function AppRoutes() {
       <Route
         path="/"
         element={
-          isAuthenticated ? <Navigate to="/workshops" replace /> : <Navigate to="/login" replace />
+          isAuthenticated ? (
+            <Navigate to="/workshops" replace />
+          ) : (
+            <Navigate to="/login" replace />
+          )
         }
       />
 
@@ -53,18 +61,7 @@ function AppRoutes() {
       />
 
       <Route
-        path="/register/:workshopId"
-        element={
-          <MainLayout>
-            <ProtectedRoute>
-              <RegistrationPage />
-            </ProtectedRoute>
-          </MainLayout>
-        }
-      />
-
-      <Route
-        path="/registration/:registrationId/payment"
+        path="/workshops/:workshopId/payment"
         element={
           <MainLayout>
             <ProtectedRoute>
@@ -124,4 +121,4 @@ function App() {
   );
 }
 
-export default App
+export default App;

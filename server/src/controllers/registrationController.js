@@ -21,6 +21,16 @@ async function getRegistration(req, res) {
   return res.status(200).json({ ok: true, data });
 }
 
+async function getRegistrationByWorkshop(req, res) {
+  const { workshopId } = req.params || {};
+  const data = await registrationService.getRegistrationByWorkshop({
+    workshopId,
+    userId: req.user.id,
+  });
+
+  return res.status(200).json({ ok: true, data });
+}
+
 async function pullSync(req, res) {
   const { workshop_id: workshopId } = req.query || {};
   const data = await registrationService.getSyncData({ workshopId });
@@ -36,6 +46,7 @@ async function syncRegistrations(req, res) {
 module.exports = {
   registerWorkshop,
   getRegistration,
+  getRegistrationByWorkshop,
   pullSync,
   syncRegistrations,
 };

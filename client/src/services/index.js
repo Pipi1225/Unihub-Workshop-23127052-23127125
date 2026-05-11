@@ -1,9 +1,9 @@
-import api from './api';
+import api from "./api";
 
 export const authService = {
   // Google credential login
   loginWithGoogle: async (credential) => {
-    const response = await api.post('/api/auth/google', { credential });
+    const response = await api.post("/api/auth/google", { credential });
     return {
       user: response.data.user,
       token: response.data.access_token,
@@ -12,7 +12,7 @@ export const authService = {
 
   // Refresh token
   refreshToken: async () => {
-    const response = await api.post('/api/auth/refresh-token');
+    const response = await api.post("/api/auth/refresh-token");
     return {
       token: response.data.access_token,
     };
@@ -20,14 +20,14 @@ export const authService = {
 
   // Logout
   logout: async () => {
-    await api.post('/api/auth/logout');
+    await api.post("/api/auth/logout");
   },
 };
 
 export const workshopService = {
   // Get all workshops
   getWorkshops: async () => {
-    const response = await api.get('/api/workshops');
+    const response = await api.get("/api/workshops");
     return response.data?.data ?? [];
   },
 
@@ -39,19 +39,29 @@ export const workshopService = {
 
   // Create workshop (admin only)
   createWorkshop: async (data) => {
-    const isMultipart = typeof FormData !== 'undefined' && data instanceof FormData;
-    const response = await api.post('/api/workshops', data, isMultipart
-      ? { headers: { 'Content-Type': 'multipart/form-data' } }
-      : undefined);
+    const isMultipart =
+      typeof FormData !== "undefined" && data instanceof FormData;
+    const response = await api.post(
+      "/api/workshops",
+      data,
+      isMultipart
+        ? { headers: { "Content-Type": "multipart/form-data" } }
+        : undefined,
+    );
     return response.data?.data ?? response.data;
   },
 
   // Update workshop (admin only)
   updateWorkshop: async (id, data) => {
-    const isMultipart = typeof FormData !== 'undefined' && data instanceof FormData;
-    const response = await api.put(`/api/workshops/${id}`, data, isMultipart
-      ? { headers: { 'Content-Type': 'multipart/form-data' } }
-      : undefined);
+    const isMultipart =
+      typeof FormData !== "undefined" && data instanceof FormData;
+    const response = await api.put(
+      `/api/workshops/${id}`,
+      data,
+      isMultipart
+        ? { headers: { "Content-Type": "multipart/form-data" } }
+        : undefined,
+    );
     return response.data?.data ?? response.data;
   },
 
@@ -64,9 +74,9 @@ export const workshopService = {
   // Upload PDF
   uploadPDF: async (id, file) => {
     const formData = new FormData();
-    formData.append('pdf', file);
+    formData.append("pdf", file);
     const response = await api.put(`/api/workshops/${id}`, formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
+      headers: { "Content-Type": "multipart/form-data" },
     });
     return response.data?.data ?? response.data;
   },
@@ -75,10 +85,11 @@ export const workshopService = {
 export const registrationService = {
   // Register for workshop
   register: async (workshopId, data) => {
-    const response = await api.post('/api/registrations', {
+    const payload = {
       workshop_id: workshopId,
-      ...data,
-    });
+      ...(data || {}),
+    };
+    const response = await api.post("/api/registrations", payload);
     return response.data;
   },
 
@@ -88,20 +99,27 @@ export const registrationService = {
     return response.data?.data ?? response.data;
   },
 
+  // Get registration by workshop ID
+  getRegistrationByWorkshop: async (workshopId) => {
+    const response = await api.get(`/api/registrations/by-workshop/${workshopId}`);
+    return response.data?.data ?? response.data;
+  },
+
   // Get my registrations
   getMyRegistrations: async () => {
-    const response = await api.get('/api/registrations');
+    const response = await api.get("/api/registrations");
     return response.data;
   },
 
   // Confirm payment
   confirmPayment: async (registrationId, data) => {
-    const response = await api.post('/api/payments/charge', {
+    const payload = {
       registration_id: registrationId,
-      ...data,
-    }, {
+      ...(data || {}),
+    };
+    const response = await api.post("/api/payments/charge", payload, {
       headers: {
-        'X-Idempotency-Key': crypto.randomUUID(),
+        "X-Idempotency-Key": crypto.randomUUID(),
       },
     });
     return response.data;
@@ -117,7 +135,7 @@ export const registrationService = {
 export const statsService = {
   // Get admin statistics
   getStatistics: async () => {
-    const response = await api.get('/api/stats');
+    const response = await api.get("/api/stats");
     return response.data?.data ?? null;
   },
 

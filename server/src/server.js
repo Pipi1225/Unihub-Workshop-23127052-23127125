@@ -40,6 +40,11 @@ const WORKSHOP_PDF_DIR =
   path.join(__dirname, "..", "uploads", "workshops");
 const WORKSHOP_PDF_PUBLIC_PATH =
   process.env.WORKSHOP_PDF_PUBLIC_PATH || "/uploads/workshops";
+const WORKSHOP_ROOM_MAP_DIR =
+  process.env.WORKSHOP_ROOM_MAP_DIR ||
+  path.join(__dirname, "..", "uploads", "room-maps");
+const WORKSHOP_ROOM_MAP_PUBLIC_PATH =
+  process.env.WORKSHOP_ROOM_MAP_PUBLIC_PATH || "/uploads/room-maps";
 
 // --- Cấu hình CORS ---
 app.use(cors(CORS_OPTIONS));
@@ -47,6 +52,10 @@ app.use(express.urlencoded({ extended: false }));
 app.use(express.json());
 app.use(cookieParser());
 app.use(WORKSHOP_PDF_PUBLIC_PATH, express.static(WORKSHOP_PDF_DIR));
+app.use(
+  WORKSHOP_ROOM_MAP_PUBLIC_PATH,
+  express.static(WORKSHOP_ROOM_MAP_DIR),
+);
 
 // --- Routes ---
 app.use("/api", healthRoute);

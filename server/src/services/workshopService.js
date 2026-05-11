@@ -1,11 +1,125 @@
+const fsp = require("fs/promises");
 const prisma = require("../config/prisma");
+const createSupabaseClient = require("../config/supabase");
 const { enqueueWorkshopSummary } = require("../queues/workshopSummaryQueue");
 const { buildPdfPublicUrl } = require("../middlewares/uploadPdf");
+const { buildRoomMapPublicUrl } = require("../middlewares/uploadImage");
 const {
   getCachedWorkshops,
   setCachedWorkshops,
   invalidateWorkshopsCache,
 } = require("../utils/workshopCache");
+
+const ROOM_MAP_BUCKET = process.env.SUPABASE_ROOM_MAP_BUCKET || "room-maps";
+const WORKSHOP_PDF_BUCKET =
+  process.env.SUPABASE_WORKSHOP_PDF_BUCKET || "workshop_pdf";
+
+function canUseSupabaseStorage() {
+  return Boolean(
+    process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY,
+  );
+}
+
+async function uploadRoomMapToSupabase(roomMapFile) {
+  const supabase = createSupabaseClient(
+    process.env.SUPABASE_URL,
+    process.env.SUPABASE_SERVICE_ROLE_KEY,
+  );
+
+  const objectPath = `room-maps/${roomMapFile.filename}`;
+  const buffer = await fsp.readFile(roomMapFile.path);
+
+  const { error } = await supabase.storage
+    .from(ROOM_MAP_BUCKET)
+    .upload(objectPath, buffer, {
+      contentType: roomMapFile.mimetype || "image/png",
+      upsert: true,
+    });
+
+  if (error) {
+    throw new Error(error.message || "Supabase upload failed");
+  }
+
+  const { data } = supabase.storage
+    .from(ROOM_MAP_BUCKET)
+    .getPublicUrl(objectPath);
+  return data?.publicUrl || null;
+}
+
+async function uploadWorkshopPdfToSupabase(pdfFile) {
+  const supabase = createSupabaseClient(
+    process.env.SUPABASE_URL,
+    process.env.SUPABASE_SERVICE_ROLE_KEY,
+  );
+
+  const objectPath = `workshop-pdfs/${pdfFile.filename}`;
+  const buffer = await fsp.readFile(pdfFile.path);
+
+  const { error } = await supabase.storage
+    .from(WORKSHOP_PDF_BUCKET)
+    .upload(objectPath, buffer, {
+      contentType: "application/pdf",
+      upsert: true,
+    });
+
+  if (error) {
+    throw new Error(error.message || "Supabase upload failed");
+  }
+
+  const { data } = supabase.storage
+    .from(WORKSHOP_PDF_BUCKET)
+    .getPublicUrl(objectPath);
+  return data?.publicUrl || null;
+}
+
+async function resolveRoomMapUrl(roomMapFile, fallbackUrl) {
+  if (!roomMapFile) {
+    return fallbackUrl || null;
+  }
+
+  if (!canUseSupabaseStorage()) {
+    return buildRoomMapPublicUrl(roomMapFile.filename);
+  }
+
+  try {
+    const publicUrl = await uploadRoomMapToSupabase(roomMapFile);
+    if (publicUrl) {
+      await fsp.unlink(roomMapFile.path).catch(() => {});
+      return publicUrl;
+    }
+  } catch (error) {
+    console.warn(
+      "[workshopService] Failed to upload room map to Supabase:",
+      error.message,
+    );
+  }
+
+  return buildRoomMapPublicUrl(roomMapFile.filename);
+}
+
+async function resolveWorkshopPdfUrl(pdfFile) {
+  if (!pdfFile) {
+    return null;
+  }
+
+  if (!canUseSupabaseStorage()) {
+    return buildPdfPublicUrl(pdfFile.filename);
+  }
+
+  try {
+    const publicUrl = await uploadWorkshopPdfToSupabase(pdfFile);
+    if (publicUrl) {
+      return publicUrl;
+    }
+  } catch (error) {
+    console.warn(
+      "[workshopService] Failed to upload workshop PDF to Supabase:",
+      error.message,
+    );
+  }
+
+  return buildPdfPublicUrl(pdfFile.filename);
+}
 
 function parseBoolean(value) {
   if (typeof value === "boolean") {
@@ -59,7 +173,10 @@ function buildWorkshopResponse(workshop) {
   };
 }
 
-function validateWorkshopPayload(payload, { partial = false, hasFile = false } = {}) {
+function validateWorkshopPayload(
+  payload,
+  { partial = false, hasFile = false } = {},
+) {
   const errors = [];
   const title = payload.title?.trim();
   const roomName = payload.room_name?.trim();
@@ -164,8 +281,11 @@ async function getWorkshopById(workshopId) {
   return buildWorkshopResponse(workshop);
 }
 
-async function createWorkshop({ payload, file }) {
-  const { errors, data } = validateWorkshopPayload(payload, { partial: false, hasFile: !!file });
+async function createWorkshop({ payload, file, roomMapFile }) {
+  const { errors, data } = validateWorkshopPayload(payload, {
+    partial: false,
+    hasFile: !!file,
+  });
   if (errors.length) {
     throw Object.assign(new Error(errors.join("; ")), { statusCode: 400 });
   }
@@ -176,7 +296,11 @@ async function createWorkshop({ payload, file }) {
     });
   }
 
-  const pdfUrl = file ? buildPdfPublicUrl(file.filename) : null;
+  const pdfUrl = await resolveWorkshopPdfUrl(file);
+  const roomMapUrl = await resolveRoomMapUrl(
+    roomMapFile,
+    data.room_map_url || null,
+  );
   const aiStatus = file
     ? "PROCESSING"
     : data.description
@@ -189,7 +313,7 @@ async function createWorkshop({ payload, file }) {
       description: file ? null : data.description,
       room_name: data.room_name,
       speaker_name: data.speaker_name,
-      room_map_url: data.room_map_url,
+      room_map_url: roomMapUrl,
       total_slots: data.total_slots,
       available_slots: data.total_slots,
       is_paid: data.is_paid,
@@ -213,15 +337,24 @@ async function createWorkshop({ payload, file }) {
   return buildWorkshopResponse(workshop);
 }
 
-async function updateWorkshop({ workshopId, payload, file }) {
+async function updateWorkshop({ workshopId, payload, file, roomMapFile }) {
   if (!workshopId) {
     throw Object.assign(new Error("Missing workshop id"), { statusCode: 400 });
   }
 
-  const { errors, data } = validateWorkshopPayload(payload, { partial: true, hasFile: !!file });
+  const { errors, data } = validateWorkshopPayload(payload, {
+    partial: true,
+    hasFile: !!file,
+  });
   if (errors.length) {
     throw Object.assign(new Error(errors.join("; ")), { statusCode: 400 });
   }
+
+  const resolvedRoomMapUrl = await resolveRoomMapUrl(
+    roomMapFile,
+    data.room_map_url || null,
+  );
+  const resolvedPdfUrl = await resolveWorkshopPdfUrl(file);
 
   const workshop = await prisma.$transaction(async (tx) => {
     const existing = await tx.workshops.findUnique({
@@ -235,13 +368,24 @@ async function updateWorkshop({ workshopId, payload, file }) {
     const updates = {};
 
     if (payload.title !== undefined) updates.title = data.title;
-    if (payload.description !== undefined) updates.description = data.description;
+    if (payload.description !== undefined)
+      updates.description = data.description;
     if (payload.room_name !== undefined) updates.room_name = data.room_name;
-    if (payload.speaker_name !== undefined) updates.speaker_name = data.speaker_name;
-    if (payload.room_map_url !== undefined) updates.room_map_url = data.room_map_url;
+    if (payload.speaker_name !== undefined)
+      updates.speaker_name = data.speaker_name;
+    if (payload.room_map_url !== undefined)
+      updates.room_map_url = data.room_map_url;
+    if (roomMapFile) {
+      updates.room_map_url = resolvedRoomMapUrl;
+    }
     if (payload.is_paid !== undefined) updates.is_paid = data.is_paid;
-    if (payload.price !== undefined) updates.price = data.is_paid ? data.price : 0;
-    if (payload.is_paid !== undefined && !data.is_paid && payload.price === undefined) {
+    if (payload.price !== undefined)
+      updates.price = data.is_paid ? data.price : 0;
+    if (
+      payload.is_paid !== undefined &&
+      !data.is_paid &&
+      payload.price === undefined
+    ) {
       updates.price = 0;
     }
     if (payload.start_time !== undefined) updates.start_time = data.start_time;
@@ -267,7 +411,7 @@ async function updateWorkshop({ workshopId, payload, file }) {
     }
 
     if (file) {
-      updates.pdf_url = buildPdfPublicUrl(file.filename);
+      updates.pdf_url = resolvedPdfUrl;
       updates.ai_status = "PROCESSING";
       updates.description = null;
     } else if (payload.description !== undefined) {
