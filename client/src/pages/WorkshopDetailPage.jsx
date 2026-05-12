@@ -1,20 +1,31 @@
 import { useState, useEffect } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
-import { workshopService } from "../services";
+import { registrationService, workshopService } from "../services";
 import { formatDate, formatPrice } from "../utils/helpers";
 
 export default function WorkshopDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { isAdmin } = useAuth();
+  const { isAdmin, isAuthenticated, isStudent } = useAuth();
   const [workshop, setWorkshop] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [registration, setRegistration] = useState(null);
+  const [registrationLoading, setRegistrationLoading] = useState(false);
 
   useEffect(() => {
     fetchWorkshop();
   }, [id]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !isStudent || isAdmin) {
+      setRegistration(null);
+      return;
+    }
+
+    fetchRegistration();
+  }, [id, isAuthenticated, isStudent, isAdmin]);
 
   const fetchWorkshop = async () => {
     try {
@@ -27,6 +38,22 @@ export default function WorkshopDetailPage() {
       console.error(err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchRegistration = async () => {
+    try {
+      setRegistrationLoading(true);
+      const data = await registrationService.getRegistrationByWorkshop(id);
+      setRegistration(data);
+    } catch (err) {
+      if (err.response?.status === 404 || err.response?.status === 401) {
+        setRegistration(null);
+      } else {
+        console.error(err);
+      }
+    } finally {
+      setRegistrationLoading(false);
     }
   };
 
@@ -60,7 +87,9 @@ export default function WorkshopDetailPage() {
   const availableSlots = Number.isFinite(workshop.available_slots)
     ? workshop.available_slots
     : workshop.total_slots - (workshop.sold_count || 0);
-  const canRegister = availableSlots > 0;
+  const endTime = workshop.end_time ? new Date(workshop.end_time) : null;
+  const isExpired = endTime ? endTime < new Date() : false;
+  const canRegister = availableSlots > 0 && !isExpired && !registration;
   const apiBaseUrl = import.meta.env.VITE_API_URL || "http://localhost:4000";
   const roomMapUrl = workshop.room_map_url
     ? workshop.room_map_url.startsWith("/")
@@ -203,7 +232,31 @@ export default function WorkshopDetailPage() {
 
           {!isAdmin && (
             <div className="mt-8">
-              {canRegister ? (
+              {registrationLoading ? (
+                <div className="bg-blue-50 border border-blue-200 text-blue-700 px-4 py-3 rounded text-center">
+                  Đang kiểm tra trạng thái đăng ký...
+                </div>
+              ) : registration ? (
+                <div className="space-y-3">
+                  {registration.payment_status === "PENDING" &&
+                  registration.workshop?.is_paid ? (
+                    <Link
+                      to={`/workshops/${id}/payment`}
+                      className="block bg-amber-600 text-white text-center py-3 px-6 rounded-lg hover:bg-amber-700 transition font-semibold"
+                    >
+                      Tiếp tục thanh toán
+                    </Link>
+                  ) : (
+                    <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded text-center">
+                      Bạn đã đăng ký workshop này.
+                    </div>
+                  )}
+                </div>
+              ) : isExpired ? (
+                <div className="bg-gray-50 border border-gray-200 text-gray-700 px-4 py-3 rounded text-center">
+                  Workshop đã kết thúc
+                </div>
+              ) : canRegister ? (
                 <Link
                   to={`/workshops/${id}/payment`}
                   className="block bg-blue-600 text-white text-center py-3 px-6 rounded-lg hover:bg-blue-700 transition font-semibold"

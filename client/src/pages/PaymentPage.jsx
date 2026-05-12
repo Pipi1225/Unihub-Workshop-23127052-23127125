@@ -1,11 +1,14 @@
-import { useState, useEffect } from "react";
+import { useRef, useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { registrationService } from "../services";
+import { useToast } from "../contexts/ToastContext";
 import { formatPrice } from "../utils/helpers";
 
 export default function PaymentPage() {
   const { workshopId } = useParams();
   const navigate = useNavigate();
+  const { showToast } = useToast();
+  const shouldToastOnPaid = useRef(false);
 
   const [registration, setRegistration] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -21,6 +24,14 @@ export default function PaymentPage() {
     setRegistration(data);
 
     if (data.payment_status === "PAID") {
+      if (shouldToastOnPaid.current) {
+        const title = data.workshop?.title || "Workshop";
+        showToast(
+          `Đăng ký workshop "${title}" thành công, vui lòng kiểm tra email hoặc trang "workshop của tôi"`,
+          { variant: "success" },
+        );
+        shouldToastOnPaid.current = false;
+      }
       setSuccess(true);
       setTimeout(() => {
         navigate("/workshops");
@@ -35,6 +46,10 @@ export default function PaymentPage() {
 
       if (!result?.registration_id) {
         throw new Error("Không thể tạo đăng ký");
+      }
+
+      if (result.payment_status === "PAID") {
+        shouldToastOnPaid.current = true;
       }
 
       const data = await registrationService.getRegistration(
@@ -71,6 +86,11 @@ export default function PaymentPage() {
 
     try {
       await registrationService.confirmPayment(registration.id);
+      const title = registration.workshop?.title || "Workshop";
+      showToast(
+        `Đăng ký workshop "${title}" thành công, vui lòng kiểm tra email hoặc trang "workshop của tôi"`,
+        { variant: "success" },
+      );
       setSuccess(true);
       setTimeout(() => {
         navigate("/workshops");

@@ -1,5 +1,5 @@
-import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
+import { Link, useNavigate, useLocation } from "react-router-dom";
+import { useAuth } from "../contexts/AuthContext";
 
 export default function Layout({ children }) {
   const { user, isAuthenticated, isAdmin, isOrganizer, logout } = useAuth();
@@ -8,10 +8,11 @@ export default function Layout({ children }) {
 
   const handleLogout = () => {
     logout();
-    navigate('/login');
+    navigate("/login");
   };
 
-  const isActive = (path) => location.pathname === path ? 'border-b-2 border-blue-600' : '';
+  const isActive = (path) =>
+    location.pathname === path ? "border-b-2 border-blue-600" : "";
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -26,14 +27,20 @@ export default function Layout({ children }) {
               <div className="flex flex-wrap items-center gap-4 min-w-0">
                 <Link
                   to="/workshops"
-                  className={`px-3 py-2 text-gray-700 hover:text-blue-600 ${isActive('/workshops')}`}
+                  className={`px-3 py-2 text-gray-700 hover:text-blue-600 ${isActive("/workshops")}`}
                 >
-                  Workshops
+                  Danh sách Workshop
+                </Link>
+                <Link
+                  to="/my-workshops"
+                  className={`px-3 py-2 text-gray-700 hover:text-blue-600 ${isActive("/my-workshops")}`}
+                >
+                  Workshop Của Tôi
                 </Link>
                 {isAdmin && (
                   <Link
                     to="/admin"
-                    className={`px-3 py-2 text-gray-700 hover:text-blue-600 ${isActive('/admin')}`}
+                    className={`px-3 py-2 text-gray-700 hover:text-blue-600 ${isActive("/admin")}`}
                   >
                     Admin
                   </Link>
@@ -46,7 +53,8 @@ export default function Layout({ children }) {
             {isAuthenticated ? (
               <>
                 <span className="text-sm text-gray-600 whitespace-nowrap min-w-0">
-                  {user?.full_name} {isOrganizer ? '(Organizer)' : isAdmin ? '(Admin)' : ''}
+                  {user?.full_name}{" "}
+                  {isOrganizer ? "(Organizer)" : isAdmin ? "(Admin)" : ""}
                 </span>
                 <button
                   onClick={handleLogout}
@@ -68,9 +76,7 @@ export default function Layout({ children }) {
       </nav>
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 py-8">
-        {children}
-      </main>
+      <main className="max-w-7xl mx-auto px-4 py-8">{children}</main>
     </div>
   );
 }

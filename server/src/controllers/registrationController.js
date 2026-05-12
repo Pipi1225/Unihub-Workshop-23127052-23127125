@@ -31,6 +31,17 @@ async function getRegistrationByWorkshop(req, res) {
   return res.status(200).json({ ok: true, data });
 }
 
+async function listMyRegistrations(req, res) {
+  const { page, page_size: pageSize } = req.query || {};
+  const data = await registrationService.listRegistrationsForUser({
+    userId: req.user.id,
+    page: page ? Number(page) : undefined,
+    pageSize: pageSize ? Number(pageSize) : undefined,
+  });
+
+  return res.status(200).json({ ok: true, data });
+}
+
 async function pullSync(req, res) {
   const { workshop_id: workshopId } = req.query || {};
   const data = await registrationService.getSyncData({ workshopId });
@@ -45,6 +56,7 @@ async function syncRegistrations(req, res) {
 
 module.exports = {
   registerWorkshop,
+  listMyRegistrations,
   getRegistration,
   getRegistrationByWorkshop,
   pullSync,

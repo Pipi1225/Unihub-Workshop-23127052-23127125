@@ -4,9 +4,20 @@ const WORKSHOP_CACHE_KEY =
   process.env.WORKSHOP_CACHE_KEY || "cache:workshops:list";
 const WORKSHOP_CACHE_TTL = Number(process.env.WORKSHOP_CACHE_TTL || 60);
 
-async function getCachedWorkshops() {
+function buildWorkshopsCacheKey({ page, pageSize, includeAll }) {
+  const safePage =
+    Number.isFinite(Number(page)) && Number(page) > 0 ? Number(page) : 1;
+  const safePageSize =
+    Number.isFinite(Number(pageSize)) && Number(pageSize) > 0
+      ? Number(pageSize)
+      : 9;
+  const scope = includeAll ? "all" : "active";
+  return `${WORKSHOP_CACHE_KEY}:${scope}:${safePage}:${safePageSize}`;
+}
+
+async function getCachedWorkshops(cacheKey) {
   try {
-    const cached = await redisClient.get(WORKSHOP_CACHE_KEY);
+    const cached = await redisClient.get(cacheKey);
     if (!cached) {
       return null;
     }
@@ -17,11 +28,11 @@ async function getCachedWorkshops() {
   }
 }
 
-async function setCachedWorkshops(items) {
+async function setCachedWorkshops(cacheKey, payload) {
   try {
     await redisClient.set(
-      WORKSHOP_CACHE_KEY,
-      JSON.stringify(items),
+      cacheKey,
+      JSON.stringify(payload),
       "EX",
       WORKSHOP_CACHE_TTL,
     );
@@ -32,7 +43,10 @@ async function setCachedWorkshops(items) {
 
 async function invalidateWorkshopsCache() {
   try {
-    await redisClient.del(WORKSHOP_CACHE_KEY);
+    const keys = await redisClient.keys(`${WORKSHOP_CACHE_KEY}:*`);
+    if (keys.length > 0) {
+      await redisClient.del(keys);
+    }
   } catch (error) {
     console.warn("[workshopCache] Redis delete failed:", error.message);
   }
@@ -41,6 +55,7 @@ async function invalidateWorkshopsCache() {
 module.exports = {
   WORKSHOP_CACHE_KEY,
   WORKSHOP_CACHE_TTL,
+  buildWorkshopsCacheKey,
   getCachedWorkshops,
   setCachedWorkshops,
   invalidateWorkshopsCache,

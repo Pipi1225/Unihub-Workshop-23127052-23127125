@@ -5,6 +5,7 @@ const { enqueueWorkshopSummary } = require("../queues/workshopSummaryQueue");
 const { buildPdfPublicUrl } = require("../middlewares/uploadPdf");
 const { buildRoomMapPublicUrl } = require("../middlewares/uploadImage");
 const {
+  buildWorkshopsCacheKey,
   getCachedWorkshops,
   setCachedWorkshops,
   invalidateWorkshopsCache,
@@ -243,26 +244,54 @@ function validateWorkshopPayload(
   };
 }
 
-async function listWorkshops({ includeAll = false } = {}) {
-  if (!includeAll) {
-    const cached = await getCachedWorkshops();
-    if (cached) {
-      return cached;
-    }
+async function listWorkshops({
+  includeAll = false,
+  page = 1,
+  pageSize = 9,
+} = {}) {
+  const safePage =
+    Number.isFinite(Number(page)) && Number(page) > 0 ? Number(page) : 1;
+  const safePageSize =
+    Number.isFinite(Number(pageSize)) && Number(pageSize) > 0
+      ? Math.min(Number(pageSize), 60)
+      : 9;
+  const skip = (safePage - 1) * safePageSize;
+  const where = includeAll ? {} : { end_time: { gte: new Date() } };
+
+  const cacheKey = buildWorkshopsCacheKey({
+    page: safePage,
+    pageSize: safePageSize,
+    includeAll,
+  });
+
+  const cached = await getCachedWorkshops(cacheKey);
+  if (cached) {
+    return cached;
   }
 
-  const workshops = await prisma.workshops.findMany({
-    where: includeAll ? {} : { end_time: { gte: new Date() } },
-    orderBy: { start_time: "asc" },
-  });
+  const [total, workshops] = await Promise.all([
+    prisma.workshops.count({ where }),
+    prisma.workshops.findMany({
+      where,
+      orderBy: { start_time: "asc" },
+      skip,
+      take: safePageSize,
+    }),
+  ]);
 
   const response = workshops.map(buildWorkshopResponse);
 
-  if (!includeAll) {
-    await setCachedWorkshops(response);
-  }
+  const payload = {
+    items: response,
+    page: safePage,
+    page_size: safePageSize,
+    total,
+    total_pages: Math.max(Math.ceil(total / safePageSize), 1),
+  };
 
-  return response;
+  await setCachedWorkshops(cacheKey, payload);
+
+  return payload;
 }
 
 async function getWorkshopById(workshopId) {

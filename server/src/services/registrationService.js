@@ -131,6 +131,7 @@ async function getRegistrationById({ registrationId, userId }) {
   return {
     id: registration.id,
     registration_id: registration.id,
+    qr_code_hash: registration.qr_code_hash,
     full_name: registration.users?.full_name || "",
     email: registration.users?.email || "",
     phone_number: "",
@@ -140,6 +141,13 @@ async function getRegistrationById({ registrationId, userId }) {
       title: registration.workshops?.title || "",
       room_name: registration.workshops?.room_name || "",
       speaker_name: registration.workshops?.speaker_name || "",
+      start_time: registration.workshops?.start_time
+        ? registration.workshops?.start_time.toISOString()
+        : null,
+      end_time: registration.workshops?.end_time
+        ? registration.workshops?.end_time.toISOString()
+        : null,
+      room_map_url: registration.workshops?.room_map_url || null,
       is_paid: Boolean(registration.workshops?.is_paid),
     },
   };
@@ -183,6 +191,7 @@ async function getRegistrationByWorkshop({ workshopId, userId }) {
   return {
     id: registration.id,
     registration_id: registration.id,
+    qr_code_hash: registration.qr_code_hash,
     full_name: registration.users?.full_name || "",
     email: registration.users?.email || "",
     phone_number: "",
@@ -192,8 +201,81 @@ async function getRegistrationByWorkshop({ workshopId, userId }) {
       title: registration.workshops?.title || "",
       room_name: registration.workshops?.room_name || "",
       speaker_name: registration.workshops?.speaker_name || "",
+      start_time: registration.workshops?.start_time
+        ? registration.workshops?.start_time.toISOString()
+        : null,
+      end_time: registration.workshops?.end_time
+        ? registration.workshops?.end_time.toISOString()
+        : null,
+      room_map_url: registration.workshops?.room_map_url || null,
       is_paid: Boolean(registration.workshops?.is_paid),
     },
+  };
+}
+
+async function listRegistrationsForUser({ userId, page = 1, pageSize = 10 }) {
+  const safePage =
+    Number.isFinite(Number(page)) && Number(page) > 0 ? Number(page) : 1;
+  const safePageSize =
+    Number.isFinite(Number(pageSize)) && Number(pageSize) > 0
+      ? Math.min(Number(pageSize), 50)
+      : 10;
+  const skip = (safePage - 1) * safePageSize;
+
+  const [total, registrations] = await Promise.all([
+    prisma.registrations.count({ where: { user_id: userId } }),
+    prisma.registrations.findMany({
+      where: { user_id: userId },
+      include: {
+        workshops: {
+          select: {
+            id: true,
+            title: true,
+            room_name: true,
+            speaker_name: true,
+            start_time: true,
+            end_time: true,
+            room_map_url: true,
+            is_paid: true,
+            price: true,
+          },
+        },
+      },
+      orderBy: { created_at: "desc" },
+      skip,
+      take: safePageSize,
+    }),
+  ]);
+
+  const items = registrations.map((row) => ({
+    id: row.id,
+    workshop_id: row.workshop_id,
+    payment_status: row.payment_status,
+    qr_code_hash: row.qr_code_hash,
+    created_at: row.created_at ? row.created_at.toISOString() : null,
+    workshop: {
+      id: row.workshops?.id || row.workshop_id,
+      title: row.workshops?.title || "",
+      room_name: row.workshops?.room_name || "",
+      speaker_name: row.workshops?.speaker_name || "",
+      start_time: row.workshops?.start_time
+        ? row.workshops?.start_time.toISOString()
+        : null,
+      end_time: row.workshops?.end_time
+        ? row.workshops?.end_time.toISOString()
+        : null,
+      room_map_url: row.workshops?.room_map_url || null,
+      is_paid: Boolean(row.workshops?.is_paid),
+      price: row.workshops?.price || 0,
+    },
+  }));
+
+  return {
+    items,
+    page: safePage,
+    page_size: safePageSize,
+    total,
+    total_pages: Math.max(Math.ceil(total / safePageSize), 1),
   };
 }
 
@@ -476,6 +558,7 @@ module.exports = {
   registerWorkshop,
   getRegistrationById,
   getRegistrationByWorkshop,
+  listRegistrationsForUser,
   expireRegistrationHold,
   getSyncData,
   syncCheckins,

@@ -5,6 +5,7 @@ import {
   Navigate,
 } from "react-router-dom";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
+import { ToastProvider } from "./contexts/ToastContext";
 import MainLayout from "./layouts/MainLayout";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 
@@ -13,6 +14,9 @@ import LoginPage from "./pages/LoginPage";
 import WorkshopListPage from "./pages/WorkshopListPage";
 import WorkshopDetailPage from "./pages/WorkshopDetailPage";
 import PaymentPage from "./pages/PaymentPage";
+import MyWorkshopsPage from "./pages/MyWorkshopsPage";
+import RoomMapPage from "./pages/RoomMapPage";
+import QrCodePage from "./pages/QrCodePage";
 import AdminWorkshopManagementPage from "./pages/AdminWorkshopManagementPage";
 import AdminDashboardPage from "./pages/AdminDashboardPage";
 
@@ -50,6 +54,17 @@ function AppRoutes() {
       />
 
       <Route
+        path="/my-workshops"
+        element={
+          <MainLayout>
+            <ProtectedRoute>
+              <MyWorkshopsPage />
+            </ProtectedRoute>
+          </MainLayout>
+        }
+      />
+
+      <Route
         path="/workshops/:id"
         element={
           <MainLayout>
@@ -66,6 +81,28 @@ function AppRoutes() {
           <MainLayout>
             <ProtectedRoute>
               <PaymentPage />
+            </ProtectedRoute>
+          </MainLayout>
+        }
+      />
+
+      <Route
+        path="/workshops/:id/room-map"
+        element={
+          <MainLayout>
+            <ProtectedRoute>
+              <RoomMapPage />
+            </ProtectedRoute>
+          </MainLayout>
+        }
+      />
+
+      <Route
+        path="/my-workshops/qr/:hash"
+        element={
+          <MainLayout>
+            <ProtectedRoute>
+              <QrCodePage />
             </ProtectedRoute>
           </MainLayout>
         }
@@ -115,7 +152,9 @@ function App() {
   return (
     <Router>
       <AuthProvider>
-        <AppRoutes />
+        <ToastProvider>
+          <AppRoutes />
+        </ToastProvider>
       </AuthProvider>
     </Router>
   );

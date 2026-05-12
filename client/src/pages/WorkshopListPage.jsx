@@ -7,18 +7,24 @@ import { formatDate, formatPrice } from "../utils/helpers";
 export default function WorkshopListPage() {
   const { isAdmin } = useAuth();
   const [workshops, setWorkshops] = useState([]);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    fetchWorkshops();
-  }, []);
+    fetchWorkshops(page);
+  }, [page]);
 
-  const fetchWorkshops = async () => {
+  const fetchWorkshops = async (targetPage) => {
     try {
       setLoading(true);
-      const data = await workshopService.getWorkshops();
-      setWorkshops(data);
+      const data = await workshopService.getWorkshops({
+        page: targetPage,
+        pageSize: 9,
+      });
+      setWorkshops(data?.items ?? []);
+      setTotalPages(data?.total_pages ?? 1);
       setError(null);
     } catch (err) {
       setError("Lỗi khi tải danh sách workshop");
@@ -27,6 +33,9 @@ export default function WorkshopListPage() {
       setLoading(false);
     }
   };
+
+  const canGoPrev = page > 1;
+  const canGoNext = page < totalPages;
 
   if (loading) {
     return (
@@ -38,16 +47,37 @@ export default function WorkshopListPage() {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-6">
         <h1 className="text-3xl font-bold text-gray-800">Danh sách Workshop</h1>
-        {isAdmin && (
-          <Link
-            to="/admin/workshops/new"
-            className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setPage((prev) => Math.max(prev - 1, 1))}
+            disabled={!canGoPrev}
+            className="px-3 py-2 text-sm rounded border border-gray-200 text-gray-700 disabled:opacity-40"
           >
-            + Tạo Workshop
-          </Link>
-        )}
+            Trước
+          </button>
+          <span className="text-sm text-gray-600">
+            Trang {page} / {totalPages}
+          </span>
+          <button
+            type="button"
+            onClick={() => setPage((prev) => Math.min(prev + 1, totalPages))}
+            disabled={!canGoNext}
+            className="px-3 py-2 text-sm rounded border border-gray-200 text-gray-700 disabled:opacity-40"
+          >
+            Sau
+          </button>
+          {isAdmin && (
+            <Link
+              to="/admin/workshops/new"
+              className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+            >
+              + Tạo Workshop
+            </Link>
+          )}
+        </div>
       </div>
 
       {error && (

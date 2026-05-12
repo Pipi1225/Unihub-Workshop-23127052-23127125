@@ -26,9 +26,15 @@ export const authService = {
 
 export const workshopService = {
   // Get all workshops
-  getWorkshops: async () => {
-    const response = await api.get("/api/workshops");
-    return response.data?.data ?? [];
+  getWorkshops: async ({ page = 1, pageSize = 9, includeAll = false } = {}) => {
+    const response = await api.get("/api/workshops", {
+      params: {
+        page,
+        page_size: pageSize,
+        include_all: includeAll ? "true" : undefined,
+      },
+    });
+    return response.data?.data ?? response.data;
   },
 
   // Get workshop by ID
@@ -101,14 +107,21 @@ export const registrationService = {
 
   // Get registration by workshop ID
   getRegistrationByWorkshop: async (workshopId) => {
-    const response = await api.get(`/api/registrations/by-workshop/${workshopId}`);
+    const response = await api.get(
+      `/api/registrations/by-workshop/${workshopId}`,
+    );
     return response.data?.data ?? response.data;
   },
 
   // Get my registrations
-  getMyRegistrations: async () => {
-    const response = await api.get("/api/registrations");
-    return response.data;
+  getMyRegistrations: async ({ page = 1, pageSize = 10 } = {}) => {
+    const response = await api.get("/api/registrations", {
+      params: {
+        page,
+        page_size: pageSize,
+      },
+    });
+    return response.data?.data ?? response.data;
   },
 
   // Confirm payment

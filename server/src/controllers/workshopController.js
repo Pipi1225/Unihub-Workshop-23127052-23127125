@@ -2,7 +2,12 @@ const workshopService = require("../services/workshopService");
 
 async function listWorkshops(req, res) {
   const includeAll = req.query?.include_all === "true";
-  const workshops = await workshopService.listWorkshops({ includeAll });
+  const { page, page_size: pageSize } = req.query || {};
+  const workshops = await workshopService.listWorkshops({
+    includeAll,
+    page: page ? Number(page) : undefined,
+    pageSize: pageSize ? Number(pageSize) : undefined,
+  });
   return res.status(200).json({ ok: true, data: workshops });
 }
 
