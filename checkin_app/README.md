@@ -2,7 +2,7 @@
 
 **Fast, offline-first QR check-in for workshops.**
 
-📱 **Works offline** → 📥 Sync registrations → 📷 Scan QR → 📤 Auto-sync when online
+📱 **Works offline** → 📥 Sync registrations → 📷 Scan QR → 🖼️ Scan from photo (fallback) → 📤 Auto-sync when online
 
 ---
 
@@ -41,7 +41,7 @@ EXPO_PUBLIC_SYNC_PUSH_ENDPOINT=/api/registrations/sync
 1. **Setup** → Enter workshop ID, tap "📥 Sync Data"
 2. **Status** → See Total / Checked-in / Pending counts
 3. **Scan** → Point camera at student QR code
-4. **Sync** → Auto-pushes when online
+4. **Fallback Scan** → Choose a photo to scan QR if camera fails
 
 **✅ Feedback** (instant < 1s):
 - ✅ Green flash + double vibrate = Success
@@ -56,7 +56,7 @@ EXPO_PUBLIC_SYNC_PUSH_ENDPOINT=/api/registrations/sync
 - ✅ **Workshop-scoped**: Manage multiple workshops
 - ✅ **Auto-sync**: Pending check-ins push when online
 - ✅ **QR validation**: < 1s offline check
-- ✅ **Image evidence**: Optional photo attachment
+- ✅ **Photo scan fallback**: Scan QR from an image if camera fails
 - ✅ **Retry backoff**: 15min → 30min → 60min
 - ✅ **Vibration feedback**: Accessibility patterns
 
@@ -144,9 +144,9 @@ See [Expo EAS Docs](https://docs.expo.dev/build/introduction/) for details.
 - The app stores `workshop_id` and `full_name` for each registration.
 - Scanning only validates QR codes for the currently selected workshop.
 
-## Image Attachment (Optional)
+## Scan QR from Photo (Fallback)
 
-Use the "Choose Image" button to attach a photo from the device library. This is stored locally (no upload yet).
+Use the "Scan from Photo" button to select an image and decode the QR. This does not upload any image.
 
 ## Verify config
 
