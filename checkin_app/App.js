@@ -1,131 +1,21 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, Image, Vibration, ScrollView } from "react-native";
+import { AppState, View, Text, Alert, ActivityIndicator, Vibration, ScrollView } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { BarCodeScanner } from "expo-barcode-scanner";
 import * as ImagePicker from "expo-image-picker";
-import NetInfo from "@react-native-community/netinfo";
-import * as SQLite from "expo-sqlite/legacy";
-import * as TaskManager from "expo-task-manager";
-import * as BackgroundFetch from "expo-background-fetch";
-
-const db = SQLite.openDatabase("checkin.db");
-
-const RETRY_DELAYS_MS = [15 * 60 * 1000, 30 * 60 * 1000, 60 * 60 * 1000];
-
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || "http://localhost:4000";
-const PULL_ENDPOINT = process.env.EXPO_PUBLIC_SYNC_PULL_ENDPOINT || "/api/sync-data";
-const PUSH_ENDPOINT = process.env.EXPO_PUBLIC_SYNC_PUSH_ENDPOINT || "/api/registrations/sync";
-const BACKGROUND_SYNC_TASK = "CHECKIN_BACKGROUND_SYNC";
-
-function runSql(sql, params = []) {
-  return new Promise((resolve, reject) => {
-    db.transaction((tx) => {
-      tx.executeSql(
-        sql,
-        params,
-        (_, result) => resolve(result),
-        (_, error) => {
-          reject(error);
-          return false;
-        }
-      );
-    });
-  });
-}
-
-async function initDb() {
-  await runSql(
-    "CREATE TABLE IF NOT EXISTS local_registrations (registration_id TEXT PRIMARY KEY NOT NULL, qr_code_hash TEXT UNIQUE, workshop_id TEXT, full_name TEXT, checkin_status INTEGER DEFAULT 0, checkin_time TEXT, sync_status TEXT DEFAULT 'SYNCED')"
-  );
-  await runSql("CREATE INDEX IF NOT EXISTS idx_local_qr_hash ON local_registrations (qr_code_hash)");
-  await runSql("CREATE INDEX IF NOT EXISTS idx_local_workshop_qr ON local_registrations (workshop_id, qr_code_hash)");
-  await runSql("CREATE INDEX IF NOT EXISTS idx_local_sync_status ON local_registrations (sync_status)");
-
-  const migrations = [
-    "ALTER TABLE local_registrations ADD COLUMN workshop_id TEXT",
-    "ALTER TABLE local_registrations ADD COLUMN full_name TEXT",
-  ];
-
-  for (const migration of migrations) {
-    try {
-      await runSql(migration);
-    } catch (error) {
-      // Ignore if column already exists
-    }
-  }
-}
-
-function mapPullData(data) {
-  if (Array.isArray(data)) {
-    return data;
-  }
-  if (Array.isArray(data?.items)) {
-    return data.items;
-  }
-  return [];
-}
-
-async function pushPendingToServer() {
-  const pendingResult = await runSql(
-    "SELECT registration_id, qr_code_hash, workshop_id, checkin_time FROM local_registrations WHERE sync_status = 'PENDING'"
-  );
-
-  const pendingItems = [];
-  for (let i = 0; i < pendingResult.rows.length; i += 1) {
-    pendingItems.push(pendingResult.rows.item(i));
-  }
-
-  if (!pendingItems.length) {
-    return { sent: 0 };
-  }
-
-  const response = await fetch(`${API_BASE_URL}${PUSH_ENDPOINT}`, {
-    method: "PUT",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(pendingItems),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Sync failed with status ${response.status}`);
-  }
-
-  await runSql("BEGIN TRANSACTION");
-  try {
-    for (const item of pendingItems) {
-      await runSql("UPDATE local_registrations SET sync_status = 'SYNCED' WHERE registration_id = ?", [
-        item.registration_id,
-      ]);
-    }
-    await runSql("COMMIT");
-  } catch (error) {
-    await runSql("ROLLBACK");
-    throw error;
-  }
-
-  return { sent: pendingItems.length };
-}
-
-let isBackgroundTaskDefined = false;
-if (typeof TaskManager?.defineTask === "function") {
-  try {
-    TaskManager.defineTask(BACKGROUND_SYNC_TASK, async () => {
-      try {
-        const result = await pushPendingToServer();
-        if (result.sent === 0) {
-          return BackgroundFetch.BackgroundFetchResult.NoData;
-        }
-        return BackgroundFetch.BackgroundFetchResult.NewData;
-      } catch (error) {
-        console.warn("[backgroundSync] Failed:", error.message);
-        return BackgroundFetch.BackgroundFetchResult.Failed;
-      }
-    });
-    isBackgroundTaskDefined = true;
-  } catch (error) {
-    console.warn("[backgroundSync] defineTask failed:", error.message);
-  }
-}
+import styles from "./constants/styles";
+import { RETRY_DELAYS_MS, RETRY_STATE_KEY } from "./constants/config";
+import { initDb, runSql } from "./services/db";
+import { applyRegistrations, pullRegistrations, pushPendingToServer } from "./services/syncService";
+import useBackgroundSync from "./hooks/useBackgroundSync";
+import useNetworkStatus from "./hooks/useNetworkStatus";
+import ScreenHeader from "./components/ScreenHeader";
+import WorkshopSetupSection from "./components/WorkshopSetupSection";
+import StatsSection from "./components/StatsSection";
+import NetworkBarSection from "./components/NetworkBarSection";
+import ScannerSection from "./components/ScannerSection";
+import PhotoScanSection from "./components/PhotoScanSection";
+import FooterNote from "./components/FooterNote";
 
 export default function App() {
   const [hasPermission, setHasPermission] = useState(null);
@@ -133,15 +23,15 @@ export default function App() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [isPushing, setIsPushing] = useState(false);
   const [scanResult, setScanResult] = useState(null);
-  const [isConnected, setIsConnected] = useState(false);
   const [stats, setStats] = useState({ total: 0, checkedIn: 0, pending: 0 });
   const [scannerKey, setScannerKey] = useState(0);
-  const [selectedImageUri, setSelectedImageUri] = useState("");
   const [isPicking, setIsPicking] = useState(false);
   const [syncMessage, setSyncMessage] = useState("");
   const [flashColor, setFlashColor] = useState("");
   const retryStateRef = useRef({ timeoutId: null, index: 0 });
   const flashTimeoutRef = useRef(null);
+  const appStateRef = useRef(AppState.currentState);
+  const pushPendingRef = useRef(null);
 
   useEffect(() => {
     initDb().catch((error) => {
@@ -155,37 +45,75 @@ export default function App() {
     });
   }, []);
 
+  useBackgroundSync({ onMessage: setSyncMessage });
+
+  const attemptPushPending = useCallback(() => {
+    const handler = pushPendingRef.current;
+    if (typeof handler === "function") {
+      handler().catch(() => null);
+    }
+  }, []);
+
+  const persistRetryState = useCallback(async (nextAt, index) => {
+    try {
+      await AsyncStorage.setItem(RETRY_STATE_KEY, JSON.stringify({ nextAt, index }));
+    } catch (error) {
+      console.warn("[retryState] save failed:", error.message);
+    }
+  }, []);
+
+  const clearRetryState = useCallback(async () => {
+    try {
+      await AsyncStorage.removeItem(RETRY_STATE_KEY);
+    } catch (error) {
+      console.warn("[retryState] clear failed:", error.message);
+    }
+  }, []);
+
   useEffect(() => {
-    const registerTask = async () => {
+    let cancelled = false;
+    const hydrateRetryState = async () => {
       try {
-        if (!isBackgroundTaskDefined) {
+        const raw = await AsyncStorage.getItem(RETRY_STATE_KEY);
+        if (!raw) {
           return;
         }
 
-        const status = await BackgroundFetch.getStatusAsync();
-        if (
-          status === BackgroundFetch.BackgroundFetchStatus.Restricted
-          || status === BackgroundFetch.BackgroundFetchStatus.Denied
-        ) {
-          setSyncMessage("Background sync disabled by OS.");
+        const parsed = JSON.parse(raw);
+        const nextAt = Number(parsed?.nextAt);
+        const storedIndex = Number.isFinite(parsed?.index) ? parsed.index : 0;
+        retryStateRef.current.index = Math.min(Math.max(storedIndex, 0), RETRY_DELAYS_MS.length - 1);
+
+        if (!nextAt) {
           return;
         }
 
-        const isRegistered = await TaskManager.isTaskRegisteredAsync(BACKGROUND_SYNC_TASK);
-        if (!isRegistered) {
-          await BackgroundFetch.registerTaskAsync(BACKGROUND_SYNC_TASK, {
-            minimumInterval: 15 * 60,
-            stopOnTerminate: false,
-            startOnBoot: true,
-          });
+        const delay = nextAt - Date.now();
+        if (delay <= 0) {
+          attemptPushPending();
+          return;
+        }
+
+        if (!retryStateRef.current.timeoutId) {
+          retryStateRef.current.timeoutId = setTimeout(() => {
+            retryStateRef.current.timeoutId = null;
+            attemptPushPending();
+          }, delay);
+          if (!cancelled) {
+            setSyncMessage(`Retry scheduled in ${Math.round(delay / 60000)} minutes`);
+          }
         }
       } catch (error) {
-        console.warn("[backgroundSync] Registration failed:", error.message);
+        console.warn("[retryState] hydrate failed:", error.message);
       }
     };
 
-    registerTask();
-  }, []);
+    hydrateRetryState();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [attemptPushPending]);
 
   const refreshStats = useCallback(async () => {
     const workshopKey = workshopId.trim();
@@ -223,58 +151,15 @@ export default function App() {
     setScanResult(null);
 
     try {
-      const url = `${API_BASE_URL}${PULL_ENDPOINT}?workshop_id=${encodeURIComponent(workshopId.trim())}`;
-      const response = await fetch(url);
-
-      if (!response.ok) {
-        throw new Error(`Sync failed with status ${response.status}`);
-      }
-
-      const payload = await response.json();
-      const items = mapPullData(payload);
-
-      await runSql("BEGIN TRANSACTION");
-      await runSql(
-        "DELETE FROM local_registrations WHERE workshop_id = ? AND sync_status != 'PENDING'",
-        [workshopId.trim()]
-      );
-      for (const item of items) {
-        const registrationId = String(item.registration_id || item.id || "");
-        const qrHash = String(item.qr_code_hash || "");
-        const itemWorkshopId = String(item.workshop_id || workshopId.trim() || "");
-        const fullName = String(item.full_name || item.fullName || "").trim();
-        if (!registrationId || !qrHash) {
-          continue;
-        }
-
-        if (!itemWorkshopId) {
-          continue;
-        }
-
-        const existing = await runSql(
-          "SELECT sync_status FROM local_registrations WHERE registration_id = ?",
-          [registrationId]
-        );
-        if (existing.rows.length > 0 && existing.rows.item(0).sync_status === "PENDING") {
-          continue;
-        }
-
-        const checkinStatus = item.checkin_status ? 1 : 0;
-        const checkinTime = item.checkin_time || null;
-
-        await runSql(
-          "INSERT OR REPLACE INTO local_registrations (registration_id, qr_code_hash, workshop_id, full_name, checkin_status, checkin_time, sync_status) VALUES (?, ?, ?, ?, ?, ?, 'SYNCED')",
-          [registrationId, qrHash, itemWorkshopId, fullName, checkinStatus, checkinTime]
-        );
-      }
-      await runSql("COMMIT");
+      const workshopKey = workshopId.trim();
+      const items = await pullRegistrations(workshopKey);
+      await applyRegistrations(workshopKey, items);
 
       await refreshStats();
       Alert.alert("Sync complete", `Downloaded ${items.length} records.`);
     } catch (error) {
       console.error(error);
       Alert.alert("Sync failed", error.message);
-      await runSql("ROLLBACK");
     } finally {
       setIsSyncing(false);
     }
@@ -286,14 +171,17 @@ export default function App() {
       return;
     }
 
-    const delay = RETRY_DELAYS_MS[Math.min(state.index, RETRY_DELAYS_MS.length - 1)];
+    const retryIndex = Math.min(state.index, RETRY_DELAYS_MS.length - 1);
+    const delay = RETRY_DELAYS_MS[retryIndex];
+    const nextAt = Date.now() + delay;
     state.timeoutId = setTimeout(() => {
       state.timeoutId = null;
-      pushPending().catch(() => null);
+      attemptPushPending();
     }, delay);
     state.index = Math.min(state.index + 1, RETRY_DELAYS_MS.length - 1);
     setSyncMessage(`Retry scheduled in ${Math.round(delay / 60000)} minutes`);
-  }, []);
+    persistRetryState(nextAt, state.index);
+  }, [attemptPushPending, persistRetryState]);
 
   const resetRetry = useCallback(() => {
     const state = retryStateRef.current;
@@ -302,7 +190,8 @@ export default function App() {
     }
     state.timeoutId = null;
     state.index = 0;
-  }, []);
+    clearRetryState();
+  }, [clearRetryState]);
 
   const pushPending = useCallback(async () => {
     if (isPushing) {
@@ -335,15 +224,25 @@ export default function App() {
   }, [isPushing, refreshStats, resetRetry, scheduleRetry]);
 
   useEffect(() => {
-    const unsubscribe = NetInfo.addEventListener((state) => {
-      const online = Boolean(state.isConnected);
-      setIsConnected(online);
-      if (online) {
+    pushPendingRef.current = pushPending;
+  }, [pushPending]);
+
+  const handleOnline = useCallback(() => {
+    pushPending().catch(() => null);
+  }, [pushPending]);
+
+  const isConnected = useNetworkStatus(handleOnline);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (nextState) => {
+      const previousState = appStateRef.current;
+      appStateRef.current = nextState;
+      if ((previousState === "inactive" || previousState === "background") && nextState === "active") {
         pushPending().catch(() => null);
       }
     });
 
-    return () => unsubscribe();
+    return () => subscription.remove();
   }, [pushPending]);
 
   useEffect(() => {
@@ -461,7 +360,6 @@ export default function App() {
 
       if (!result.canceled && result.assets && result.assets[0]) {
         const uri = result.assets[0].uri;
-        setSelectedImageUri(uri);
 
         // Try scanning QR from the selected image and reuse the same handleScan flow
         try {
@@ -483,7 +381,7 @@ export default function App() {
     } finally {
       setIsPicking(false);
     }
-  }, []);
+  }, [handleScan]);
 
   const scanStatusColor = useMemo(() => {
     if (!scanResult) {
@@ -517,369 +415,33 @@ export default function App() {
 
   return (
     <ScrollView style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.heading}>📍 Offline Check-in</Text>
-        <Text style={styles.subtitle}>Workshop-scoped QR registration</Text>
-      </View>
-
-      {/* Step 1: Setup Workshop */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Step 1: Setup Workshop</Text>
-        <Text style={styles.hint}>Enter the workshop ID to download registrations</Text>
-        <View style={styles.inputGroup}>
-          <TextInput
-            style={styles.input}
-            placeholder="e.g., WS001, WS-WORKSHOP"
-            placeholderTextColor="#a0adc1"
-            value={workshopId}
-            onChangeText={setWorkshopId}
-          />
-          <TouchableOpacity 
-            style={[styles.button, isSyncing && styles.buttonDisabled]} 
-            onPress={pullSync} 
-            disabled={isSyncing}
-          >
-            <Text style={styles.buttonText}>{isSyncing ? "⏳ Syncing..." : "📥 Sync Data"}</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {/* Step 2: Check Stats */}
-      {stats.total > 0 && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Step 2: Workshop Status</Text>
-          <View style={styles.statsContainer}>
-            <View style={styles.statCard}>
-              <Text style={styles.statLabel}>Total</Text>
-              <Text style={styles.statValue}>{stats.total}</Text>
-            </View>
-            <View style={styles.statCard}>
-              <Text style={styles.statLabel}>Checked In</Text>
-              <Text style={styles.statValue}>{stats.checkedIn}</Text>
-            </View>
-            <View style={styles.statCard}>
-              <Text style={styles.statLabel}>Pending</Text>
-              <Text style={styles.statValue}>{stats.pending}</Text>
-            </View>
-          </View>
-          <Text style={styles.progressHint}>
-            {stats.pending > 0 
-              ? `${stats.pending} check-ins waiting to sync` 
-              : "All check-ins synced ✓"}
-          </Text>
-        </View>
-      )}
-
-      {/* Network Status & Sync Control */}
-      <View style={styles.section}>
-        <View style={styles.networkBar}>
-          <Text style={styles.networkStatus}>
-            {isConnected ? "🌐 Online" : "📵 Offline"}
-          </Text>
-          <TouchableOpacity 
-            style={[styles.syncButton, isPushing && styles.buttonDisabled]} 
-            onPress={pushPending} 
-            disabled={isPushing}
-          >
-            <Text style={styles.syncButtonText}>{isPushing ? "⏳" : "📤"}</Text>
-          </TouchableOpacity>
-        </View>
-        {syncMessage && (
-          <Text style={styles.syncMessage}>{syncMessage}</Text>
-        )}
-      </View>
-
-      {/* Step 3: Scanner */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Step 3: Scan QR Code</Text>
-        <Text style={styles.hint}>Point camera at student's QR code</Text>
-        <View style={styles.scannerBox} key={scannerKey}>
-          <BarCodeScanner
-            onBarCodeScanned={handleScan}
-            style={{ flex: 1 }}
-          />
-        </View>
-        <View style={[styles.resultBox, flashColor ? { backgroundColor: flashColor } : null]}>
-          <Text style={[styles.resultText, { color: scanStatusColor }]}>
-            {scanResult ? scanResult.message : "📱 Ready to scan"}
-          </Text>
-        </View>
-      </View>
-
-      {/* Step 4: Optional Image Evidence */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Step 4: Backup — Scan from Photo</Text>
-        <Text style={styles.hint}>If the in-app camera has issues, choose a photo and the app will try to scan the QR from it.</Text>
-        <View style={styles.imageControls}>
-          <TouchableOpacity 
-            style={[styles.button, styles.imageButton, isPicking && styles.buttonDisabled]} 
-            onPress={pickImage} 
-            disabled={isPicking}
-          >
-            <Text style={styles.buttonText}>{isPicking ? "⏳ Opening..." : "📸 Scan from Photo (backup)"}</Text>
-          </TouchableOpacity>
-          {selectedImageUri && (
-            <TouchableOpacity 
-              style={styles.clearButton} 
-              onPress={() => setSelectedImageUri("")}
-              disabled={isPicking}
-            >
-              <Text style={styles.clearButtonText}>✕ Clear</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-        {selectedImageUri ? (
-          <Image source={{ uri: selectedImageUri }} style={styles.previewImage} />
-        ) : (
-          <Text style={styles.emptyImageHint}>No image selected</Text>
-        )}
-      </View>
-
-      {/* Footer Info */}
-      <View style={styles.footer}>
-        <Text style={styles.footerText}>
-          💡 App works offline. Auto-syncs pending check-ins when online.
-        </Text>
-      </View>
+      <ScreenHeader />
+      <WorkshopSetupSection
+        workshopId={workshopId}
+        onChangeWorkshopId={setWorkshopId}
+        isSyncing={isSyncing}
+        onSync={pullSync}
+      />
+      <StatsSection stats={stats} />
+      <NetworkBarSection
+        isConnected={isConnected}
+        isPushing={isPushing}
+        onPush={pushPending}
+        syncMessage={syncMessage}
+      />
+      <ScannerSection
+        scannerKey={scannerKey}
+        onScan={handleScan}
+        scanResult={scanResult}
+        flashColor={flashColor}
+        scanStatusColor={scanStatusColor}
+      />
+      <PhotoScanSection
+        isPicking={isPicking}
+        onPickImage={pickImage}
+      />
+      <FooterNote />
     </ScrollView>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flexGrow: 1,
-    paddingTop: 0,
-    paddingBottom: 20,
-    backgroundColor: "#f0f4f9",
-  },
-
-  /* Header */
-  header: {
-    paddingTop: 40,
-    paddingHorizontal: 20,
-    paddingBottom: 12,
-    backgroundColor: "#1f6feb",
-    borderBottomLeftRadius: 16,
-    borderBottomRightRadius: 16,
-  },
-  heading: {
-    fontSize: 26,
-    fontWeight: "800",
-    color: "#ffffff",
-    marginBottom: 4,
-  },
-  subtitle: {
-    fontSize: 13,
-    color: "#c7dcf7",
-  },
-
-  /* Sections */
-  section: {
-    marginHorizontal: 16,
-    marginVertical: 12,
-    backgroundColor: "#ffffff",
-    borderRadius: 12,
-    padding: 16,
-    shadowColor: "#000",
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 3,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#1f2a44",
-    marginBottom: 6,
-  },
-  hint: {
-    fontSize: 13,
-    color: "#7b889e",
-    marginBottom: 12,
-    fontStyle: "italic",
-  },
-
-  /* Input Group */
-  inputGroup: {
-    flexDirection: "column",
-    gap: 10,
-  },
-  input: {
-    borderWidth: 1.5,
-    borderColor: "#d7ddea",
-    borderRadius: 10,
-    padding: 12,
-    backgroundColor: "#fdfdfd",
-    fontSize: 14,
-    color: "#1f2a44",
-  },
-
-  /* Buttons */
-  button: {
-    backgroundColor: "#1f6feb",
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 10,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  buttonDisabled: {
-    backgroundColor: "#d0d7e8",
-  },
-  buttonText: {
-    color: "#ffffff",
-    fontWeight: "700",
-    fontSize: 14,
-  },
-  syncButton: {
-    backgroundColor: "#1f6feb",
-    width: 44,
-    height: 44,
-    borderRadius: 10,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  syncButtonText: {
-    fontSize: 20,
-  },
-
-  /* Network Bar */
-  networkBar: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 8,
-  },
-  networkStatus: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#1f2a44",
-  },
-  syncMessage: {
-    fontSize: 12,
-    color: "#7b889e",
-    marginTop: 4,
-    fontStyle: "italic",
-  },
-
-  /* Stats */
-  statsContainer: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 12,
-    gap: 10,
-  },
-  statCard: {
-    flex: 1,
-    backgroundColor: "#f8fafd",
-    paddingVertical: 16,
-    paddingHorizontal: 12,
-    borderRadius: 10,
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#e0e8f0",
-  },
-  statLabel: {
-    fontSize: 12,
-    color: "#7b889e",
-    marginBottom: 4,
-    fontWeight: "600",
-  },
-  statValue: {
-    fontSize: 22,
-    fontWeight: "800",
-    color: "#1f6feb",
-  },
-  progressHint: {
-    fontSize: 13,
-    color: "#52607a",
-    textAlign: "center",
-  },
-
-  /* Scanner */
-  scannerBox: {
-    width: "100%",
-    height: 280,
-    borderRadius: 14,
-    overflow: "hidden",
-    backgroundColor: "#000",
-    marginBottom: 12,
-    borderWidth: 2,
-    borderColor: "#1f6feb",
-  },
-  resultBox: {
-    padding: 16,
-    borderRadius: 10,
-    backgroundColor: "#f8f9fb",
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#d7ddea",
-  },
-  resultText: {
-    fontSize: 14,
-    fontWeight: "600",
-    textAlign: "center",
-  },
-
-  /* Image Picker */
-  imageControls: {
-    flexDirection: "row",
-    gap: 10,
-    marginBottom: 12,
-  },
-  imageButton: {
-    flex: 1,
-  },
-  clearButton: {
-    backgroundColor: "#f2f4f8",
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#d7ddea",
-  },
-  clearButtonText: {
-    color: "#5c6a82",
-    fontWeight: "600",
-    fontSize: 13,
-  },
-  previewImage: {
-    width: "100%",
-    height: 220,
-    borderRadius: 10,
-    marginTop: 12,
-    backgroundColor: "#f0f0f0",
-  },
-  emptyImageHint: {
-    marginTop: 12,
-    color: "#9ca7b8",
-    fontSize: 13,
-    textAlign: "center",
-    fontStyle: "italic",
-  },
-
-  /* Footer */
-  footer: {
-    marginHorizontal: 16,
-    marginVertical: 16,
-    padding: 12,
-    backgroundColor: "#e0e8f0",
-    borderRadius: 10,
-    borderLeftWidth: 4,
-    borderLeftColor: "#1f6feb",
-  },
-  footerText: {
-    fontSize: 12,
-    color: "#4a5568",
-    lineHeight: 18,
-  },
-
-  /* Loading State */
-  center: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "#f0f4f9",
-  },
-});
