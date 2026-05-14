@@ -460,7 +460,22 @@ export default function App() {
       });
 
       if (!result.canceled && result.assets && result.assets[0]) {
-        setSelectedImageUri(result.assets[0].uri);
+        const uri = result.assets[0].uri;
+        setSelectedImageUri(uri);
+
+        // Try scanning QR from the selected image and reuse the same handleScan flow
+        try {
+          const barcodes = await BarCodeScanner.scanFromURLAsync(uri);
+          if (Array.isArray(barcodes) && barcodes.length > 0 && barcodes[0].data) {
+            // reuse camera scan handler
+            await handleScan({ data: String(barcodes[0].data) });
+          } else {
+            Alert.alert('No QR found', 'Không phát hiện mã QR trong ảnh.');
+          }
+        } catch (scanErr) {
+          console.warn('scanFromURLAsync failed:', scanErr);
+          Alert.alert('Scan failed', 'Không thể quét QR từ ảnh.');
+        }
       }
     } catch (error) {
       console.error(error);
@@ -594,15 +609,15 @@ export default function App() {
 
       {/* Step 4: Optional Image Evidence */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Step 4: Add Evidence (Optional)</Text>
-        <Text style={styles.hint}>Attach a photo for compliance records</Text>
+        <Text style={styles.sectionTitle}>Step 4: Backup — Scan from Photo</Text>
+        <Text style={styles.hint}>If the in-app camera has issues, choose a photo and the app will try to scan the QR from it.</Text>
         <View style={styles.imageControls}>
           <TouchableOpacity 
             style={[styles.button, styles.imageButton, isPicking && styles.buttonDisabled]} 
             onPress={pickImage} 
             disabled={isPicking}
           >
-            <Text style={styles.buttonText}>{isPicking ? "⏳ Opening..." : "📸 Choose Photo"}</Text>
+            <Text style={styles.buttonText}>{isPicking ? "⏳ Opening..." : "📸 Scan from Photo (backup)"}</Text>
           </TouchableOpacity>
           {selectedImageUri && (
             <TouchableOpacity 
