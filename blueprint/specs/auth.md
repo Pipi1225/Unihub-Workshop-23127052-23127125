@@ -4,7 +4,7 @@
 
 Tính năng quản lý danh tính người dùng của UniHub được chia làm 2 tầng rõ rệt:
 
-- **Xác thực (Authentication - AuthN)**: Hiện tại backend tích hợp OAuth 2.0 (Google Sign-In) để xác minh danh tính người dùng. Ngoài kiểm tra domain, hệ thống còn hỗ trợ allowlist email cụ thể qua các biến `ALLOWED_ADMIN_EMAILS`, `ALLOWED_STAFF_EMAILS`, `ALLOWED_USER_EMAILS`.
+- **Xác thực (Authentication - AuthN)**: Backend hỗ trợ 2 luồng chính: Google OAuth (Web App) và đăng nhập email/mật khẩu cho check-in staff (Mobile App). Ngoài kiểm tra domain, hệ thống còn hỗ trợ allowlist email cụ thể qua các biến `ALLOWED_ADMIN_EMAILS`, `ALLOWED_STAFF_EMAILS`, `ALLOWED_USER_EMAILS`.
 
 - **Phân quyền (Authorization - AuthZ)**: Áp dụng mô hình RBAC (Role-Based Access Control) thông qua JWT. Hệ thống cấp phát Access Token (thời hạn ngắn) và Refresh Token (thời hạn dài) để phân luồng người dùng vào 3 nhóm quyền cốt lõi: STUDENT, ORGANIZER, và CHECKIN_STAFF.
 
@@ -14,7 +14,7 @@ Tính năng quản lý danh tính người dùng của UniHub được chia làm
 
 **Bối cảnh**: Sinh viên (hoặc Ban tổ chức) truy cập hệ thống UniHub trên Web App và đăng nhập bằng Google để nhận JWT.
 
-**Ghi chú triển khai check-in app**: Ở bản local hiện tại, `checkin_app` chưa tích hợp màn hình đăng nhập và cơ chế đính kèm JWT. Trên upstream repo có kế hoạch thêm luồng đăng nhập staff riêng (email/mật khẩu) để đơn giản hóa triển khai trên giả lập Android.
+**Ghi chú triển khai check-in app**: `checkin_app` dùng luồng đăng nhập staff (email/mật khẩu) để nhận Access Token và đính kèm `Authorization: Bearer <token>` cho các API sync.
 
 **Các bước:**
 
@@ -31,6 +31,17 @@ Tính năng quản lý danh tính người dùng của UniHub được chia làm
   - **Access Token**: Chứa payload { user_id, role, exp }, ký bằng JWT_SECRET, thời hạn 15 phút.
   - **Refresh Token**: Chuỗi ngẫu nhiên lưu vào DB, thời hạn 7 ngày.
 - **B6. Phản hồi**: Backend trả Access Token trực tiếp qua body JSON (để Frontend lưu vào biến memory), và tự động cài Refresh Token vào trình duyệt của người dùng thông qua HttpOnly Cookie.
+
+### Luồng 2.1a: Đăng nhập Staff (Email/Password)
+
+**Bối cảnh**: Nhân sự check-in đăng nhập trên Mobile App để nhận JWT.
+
+**Các bước:**
+
+- **B1. Nhập thông tin**: Staff nhập email/mật khẩu được cấp.
+- **B2. Gọi API**: Mobile App gọi POST /api/auth/login.
+- **B3. Xác thực**: Backend kiểm tra thông tin đăng nhập, đối chiếu allowlist và role `CHECKIN_STAFF`.
+- **B4. Phản hồi**: Backend trả Access Token qua JSON response. Mobile App lưu token và dùng cho các API sync.
 
 ### Luồng 2.2: Phân quyền gọi API (RBAC Middleware)
 
@@ -96,6 +107,10 @@ Khi người dùng bấm "Đăng xuất" hoặc Admin khóa tài khoản (Deacti
 ### Test Case 1 (Login Flow)
 
 Gọi API auth với một Google Token hợp lệ của email đã có trong DB. Server trả về mã 200, trong Header Set-Cookie có chứa Refresh Token với cờ HttpOnly.
+
+### Test Case 1b (Staff Login Flow)
+
+Gọi API /api/auth/login với email/mật khẩu hợp lệ của staff. Server trả về Access Token. Dùng token này gọi API sync, server trả về 200.
 
 ### Test Case 2 (RBAC Security)
 
