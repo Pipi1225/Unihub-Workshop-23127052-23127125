@@ -103,11 +103,10 @@ Uploads pending check-ins → marks as SYNCED on success
 
 ## 📦 Tech Stack
 
-- **React Native** (Expo SDK 51)
-- **SQLite** (expo-sqlite/legacy)
-- **QR Scanner** (expo-barcode-scanner)
+- **React Native** (Expo SDK 54)
+- **SQLite** (expo-sqlite)
+- **QR Scanner** (expo-camera)
 - **Network** (@react-native-community/netinfo)
-- **Image Picker** (expo-image-picker)
 - **Background Sync** (expo-background-fetch + expo-task-manager)
 
 ---
