@@ -125,16 +125,28 @@ Khi đang ở trạng thái Offline, Local SQLite trên thiết bị là Nguồn
 
 ## Tiêu chí chấp nhận
 
-### Test Case 1 (Offline Mode)
+### Test Case 1 (Authentication - Non-existent Account)
+
+Tại màn hình đăng nhập của ứng dụng, nhập thông tin tài khoản (username/email và password) không tồn tại trong hệ thống (Database). Nhấn nút đăng nhập. Hệ thống từ chối truy cập, giữ nguyên ở màn hình đăng nhập, hiển thị thông báo lỗi.
+
+### Test Case 2 (Authorization - Invalid Role)
+
+Tại màn hình đăng nhập, nhập thông tin của một tài khoản hợp lệ (có tồn tại trong Database) nhưng được gán ROLE không phải là `CHECKIN_STAFF` (VD: `STUDENT`). Nhấn nút đăng nhập. Hệ thống từ chối cấp quyền thực hiện điểm danh, hiển thị thông báo không đủ thẩm quyền và giữ nguyên ở màn hình đăng nhập.
+
+### Test Case 3 (Offline Mode)
 
 Mở app, tải dữ liệu sự kiện (sau khi đã có dữ liệu local hợp lệ). Sau đó TẮT hoàn toàn WiFi/4G (chuyển sang Airplane mode). Thực hiện quét 1 mã QR hợp lệ. Giao diện báo thành công. Đóng app, mở lại, số liệu điểm danh cục bộ vẫn được giữ nguyên.
 
-### Test Case 2 (Sync Behavior)
+### Test Case 4 (Duplicate Scan - Already Checked-in)
 
-Bật WiFi trở lại cho thiết bị ở Test Case 1. Nếu ứng dụng đang được mở (Foreground), trong vòng 1 phút kiểm tra Database PostgreSQL trên Server, trạng thái vé của sinh viên đó phải chuyển thành checkin_status = true.
+Dùng thiết bị quét lại chính mã QR hợp lệ đã được quét thành công ở Test Case 3. Hệ thống nhận diện được dữ liệu trùng lặp, không báo "Thành công" như lần đầu. Giao diện hiển thị cảnh báo kèm thông tin chi tiết: Sinh viên đã check-in thành công trước đó vào thời gian cụ thể. Số lượng điểm danh tổng (Phần Checked In) không bị cộng dồn thêm.
+
+### Test Case 5 (Sync Behavior)
+
+Bật WiFi trở lại cho thiết bị ở Test Case 3. Nếu ứng dụng đang được mở (Foreground), trong vòng 1 phút kiểm tra Database PostgreSQL trên Server, trạng thái vé của sinh viên đó phải chuyển thành checkin_status = true.
 
 _(Lưu ý: Nếu ứng dụng đang chạy ngầm hoặc bị đóng, thời gian đồng bộ có thể trễ hơn 1 phút do phụ thuộc hoàn toàn vào chu kỳ cấp phát tài nguyên Background Fetch của hệ điều hành)._
 
-### Test Case 3 (Security Test)
+### Test Case 6 (Security Test)
 
 Tự dùng công cụ tạo một mã QR chứa chữ "123456" rồi dùng app quét. Hệ thống từ chối truy cập.
