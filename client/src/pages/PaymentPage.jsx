@@ -15,10 +15,39 @@ export default function PaymentPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
+  const [pendingPayment, setPendingPayment] = useState(false);
+  const [pendingMessage, setPendingMessage] = useState(null);
 
   useEffect(() => {
     initRegistration();
   }, [workshopId]);
+
+  useEffect(() => {
+    if (!pendingPayment || !registration?.id) {
+      return undefined;
+    }
+
+    const intervalId = setInterval(async () => {
+      try {
+        const updated = await registrationService.getRegistration(
+          registration.id,
+        );
+
+        if (updated?.payment_status === "PAID") {
+          setPendingPayment(false);
+          setPendingMessage(null);
+          handleRegistrationLoaded(updated);
+          return;
+        }
+
+        setRegistration(updated);
+      } catch (pollError) {
+        console.error(pollError);
+      }
+    }, 6000);
+
+    return () => clearInterval(intervalId);
+  }, [pendingPayment, registration?.id]);
 
   const handleRegistrationLoaded = (data) => {
     setRegistration(data);
@@ -83,10 +112,37 @@ export default function PaymentPage() {
   const handleSubmit = async () => {
     setSubmitting(true);
     setError(null);
+    setPendingMessage(null);
 
     try {
-      await registrationService.confirmPayment(registration.id);
-      const title = registration.workshop?.title || "Workshop";
+      const result = await registrationService.confirmPayment(registration.id);
+
+      if (!result?.ok) {
+        if (result?.queued) {
+          setPendingPayment(true);
+          setPendingMessage(
+            result?.message ||
+              "Đang chờ xử lý, hệ thống sẽ tự retry thanh toán.",
+          );
+        } else {
+          setError(
+            result?.message || "Cổng thanh toán đang bận. Vui lòng thử lại.",
+          );
+        }
+        return;
+      }
+
+      const updated = await registrationService.getRegistration(
+        registration.id,
+      );
+      if (updated?.payment_status !== "PAID") {
+        setPendingPayment(true);
+        setPendingMessage("Thanh toán đang được xử lý. Vui lòng đợi...");
+        setRegistration(updated);
+        return;
+      }
+
+      const title = updated.workshop?.title || "Workshop";
       showToast(
         `Đăng ký workshop "${title}" thành công, vui lòng kiểm tra email hoặc trang "workshop của tôi"`,
         { variant: "success" },
@@ -143,6 +199,12 @@ export default function PaymentPage() {
         </div>
       )}
 
+      {pendingMessage && (
+        <div className="bg-blue-50 border border-blue-200 text-blue-700 px-3 py-2 rounded mb-4 text-sm">
+          {pendingMessage}
+        </div>
+      )}
+
       <div className="bg-white rounded-lg shadow p-6">
         <div className="space-y-3 text-gray-600">
           <div>
@@ -162,10 +224,14 @@ export default function PaymentPage() {
         <button
           type="button"
           onClick={handleSubmit}
-          disabled={submitting}
+          disabled={submitting || pendingPayment}
           className="mt-6 w-full bg-blue-600 text-white py-3 rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition font-semibold"
         >
-          {submitting ? "Đang xử lý..." : "Thanh toán"}
+          {submitting
+            ? "Đang xử lý..."
+            : pendingPayment
+              ? "Đang chờ xử lý..."
+              : "Thanh toán"}
         </button>
       </div>
     </div>

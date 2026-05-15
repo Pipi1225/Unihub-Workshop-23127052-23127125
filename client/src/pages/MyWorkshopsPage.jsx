@@ -137,14 +137,18 @@ export default function MyWorkshopsPage() {
                   </div>
 
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                    <Link
-                      to={`/workshops/${workshop.id}/payment`}
-                      className="px-4 py-2 text-sm rounded bg-blue-600 text-white text-center hover:bg-blue-700"
-                    >
-                      {isPaid && paymentStatus !== "PAID"
-                        ? "Thanh toán"
-                        : "Xem chi tiết"}
-                    </Link>
+                    {isPaid && paymentStatus !== "PAID" ? (
+                      <Link
+                        to={`/workshops/${workshop.id}/payment`}
+                        className="px-4 py-2 text-sm rounded bg-blue-600 text-white text-center hover:bg-blue-700"
+                      >
+                        Thanh toán
+                      </Link>
+                    ) : (
+                      <span className="px-4 py-2 text-sm rounded bg-gray-100 text-gray-400 text-center cursor-not-allowed">
+                        {isPaid ? "Đã thanh toán" : "Miễn phí"}
+                      </span>
+                    )}
                     <Link
                       to={`/workshops/${workshop.id}/room-map`}
                       className={`px-4 py-2 text-sm rounded text-center ${
