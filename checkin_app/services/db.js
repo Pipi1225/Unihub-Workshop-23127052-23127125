@@ -1,4 +1,4 @@
-import * as SQLite from "expo-sqlite/legacy";
+import * as SQLite from "expo-sqlite";
 
 const db = SQLite.openDatabase("checkin.db");
 
@@ -15,6 +15,52 @@ export function runSql(sql, params = []) {
         }
       );
     });
+  });
+}
+
+export function runSqlTransaction(executor) {
+  return new Promise((resolve, reject) => {
+    let hasError = false;
+
+    db.transaction(
+      (tx) => {
+        const exec = (sql, params = []) => {
+          tx.executeSql(
+            sql,
+            params,
+            undefined,
+            (_tx, error) => {
+              if (!hasError) {
+                hasError = true;
+                reject(error);
+              }
+              return false;
+            }
+          );
+        };
+
+        try {
+          executor(exec);
+        } catch (error) {
+          if (!hasError) {
+            hasError = true;
+            reject(error);
+          }
+          throw error;
+        }
+      },
+      (error) => {
+        if (!hasError) {
+          hasError = true;
+          reject(error);
+        }
+      },
+      () => {
+        if (!hasError) {
+          resolve();
+        }
+      }
+    );
   });
 }
 
