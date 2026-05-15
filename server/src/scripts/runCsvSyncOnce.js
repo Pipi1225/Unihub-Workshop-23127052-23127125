@@ -1,7 +1,7 @@
 require("dotenv").config();
 
 const path = require("path");
-const { runCsvSync, resolveStudentEmailDomain } = require("../services/csvSyncService");
+const { runCsvSync, resolveStudentEmailDomains } = require("../services/csvSyncService");
 
 const projectRoot = path.resolve(__dirname, "../../../");
 const importDir = path.join(projectRoot, "data", "import");
@@ -13,7 +13,7 @@ async function main() {
 		importDir,
 		archiveDir,
 		errorDir,
-		studentEmailDomain: resolveStudentEmailDomain(),
+		studentEmailDomains: resolveStudentEmailDomains(),
 		logger: console,
 	});
 
