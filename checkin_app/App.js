@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppState, View, Text, Alert, ActivityIndicator, Vibration, ScrollView } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { BarCodeScanner } from "expo-barcode-scanner";
+import { Camera, useCameraPermissions } from "expo-camera";
 import * as ImagePicker from "expo-image-picker";
 import styles from "./constants/styles";
 import { RETRY_DELAYS_MS, RETRY_STATE_KEY } from "./constants/config";
@@ -18,7 +18,7 @@ import PhotoScanSection from "./components/PhotoScanSection";
 import FooterNote from "./components/FooterNote";
 
 export default function App() {
-  const [hasPermission, setHasPermission] = useState(null);
+  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [workshopId, setWorkshopId] = useState("");
   const [isSyncing, setIsSyncing] = useState(false);
   const [isPushing, setIsPushing] = useState(false);
@@ -40,10 +40,10 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    BarCodeScanner.requestPermissionsAsync().then(({ status }) => {
-      setHasPermission(status === "granted");
+    requestCameraPermission().catch((error) => {
+      console.warn("Camera permission request failed:", error?.message || error);
     });
-  }, []);
+  }, [requestCameraPermission]);
 
   useBackgroundSync({ onMessage: setSyncMessage });
 
@@ -363,7 +363,7 @@ export default function App() {
 
         // Try scanning QR from the selected image and reuse the same handleScan flow
         try {
-          const barcodes = await BarCodeScanner.scanFromURLAsync(uri);
+          const barcodes = await Camera.scanFromURLAsync(uri, ["qr"]);
           if (Array.isArray(barcodes) && barcodes.length > 0 && barcodes[0].data) {
             // reuse camera scan handler
             await handleScan({ data: String(barcodes[0].data) });
@@ -396,7 +396,7 @@ export default function App() {
     return "#842029";
   }, [scanResult]);
 
-  if (hasPermission === null) {
+  if (!cameraPermission) {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" />
@@ -405,7 +405,7 @@ export default function App() {
     );
   }
 
-  if (hasPermission === false) {
+  if (!cameraPermission.granted) {
     return (
       <View style={styles.center}>
         <Text>No access to camera</Text>

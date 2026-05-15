@@ -1,66 +1,71 @@
 import * as SQLite from "expo-sqlite";
 
-const db = SQLite.openDatabase("checkin.db");
+const db = SQLite.openDatabaseSync("checkin.db");
+
+function isSelectQuery(sql) {
+  return /^\s*(select|pragma|with)\b/i.test(sql);
+}
+
+function wrapRows(rows) {
+  return {
+    length: rows.length,
+    item(index) {
+      return rows[index] ?? null;
+    },
+  };
+}
 
 export function runSql(sql, params = []) {
-  return new Promise((resolve, reject) => {
-    db.transaction((tx) => {
-      tx.executeSql(
-        sql,
-        params,
-        (_, result) => resolve(result),
-        (_, error) => {
-          reject(error);
-          return false;
-        }
-      );
+  try {
+    if (isSelectQuery(sql)) {
+      const rows = db.getAllSync(sql, params);
+      return Promise.resolve({
+        rows: wrapRows(rows),
+      });
+    }
+
+    const result = db.runSync(sql, params);
+    return Promise.resolve({
+      rowsAffected: result.changes,
+      insertId: result.lastInsertRowId ?? null,
+      rows: wrapRows([]),
     });
-  });
+  } catch (error) {
+    return Promise.reject(error);
+  }
 }
 
 export function runSqlTransaction(executor) {
   return new Promise((resolve, reject) => {
-    let hasError = false;
+    try {
+      db.execSync("BEGIN");
 
-    db.transaction(
-      (tx) => {
-        const exec = (sql, params = []) => {
-          tx.executeSql(
-            sql,
-            params,
-            undefined,
-            (_tx, error) => {
-              if (!hasError) {
-                hasError = true;
-                reject(error);
-              }
-              return false;
-            }
-          );
+      const exec = (sql, params = []) => {
+        if (isSelectQuery(sql)) {
+          return {
+            rows: wrapRows(db.getAllSync(sql, params)),
+          };
+        }
+
+        const result = db.runSync(sql, params);
+        return {
+          rowsAffected: result.changes,
+          insertId: result.lastInsertRowId ?? null,
+          rows: wrapRows([]),
         };
+      };
 
-        try {
-          executor(exec);
-        } catch (error) {
-          if (!hasError) {
-            hasError = true;
-            reject(error);
-          }
-          throw error;
-        }
-      },
-      (error) => {
-        if (!hasError) {
-          hasError = true;
-          reject(error);
-        }
-      },
-      () => {
-        if (!hasError) {
-          resolve();
-        }
+      executor(exec);
+      db.execSync("COMMIT");
+      resolve();
+    } catch (error) {
+      try {
+        db.execSync("ROLLBACK");
+      } catch (_rollbackError) {
+        // ignore rollback errors
       }
-    );
+      reject(error);
+    }
   });
 }
 
