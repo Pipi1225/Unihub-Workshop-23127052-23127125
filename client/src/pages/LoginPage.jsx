@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
-import { authService } from '../services';
+import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "../contexts/AuthContext";
+import { authService } from "../services";
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -11,7 +11,7 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (isAuthenticated) {
-      navigate('/workshops');
+      navigate("/workshops");
       return;
     }
 
@@ -32,22 +32,22 @@ export default function LoginPage() {
             const response = await authService.loginWithGoogle(credential);
             const { user, token } = response;
             login(user, token);
-            navigate('/workshops');
+            navigate("/workshops");
           } catch (error) {
-            console.error('Login failed:', error);
-            alert('Đăng nhập thất bại. Vui lòng thử lại.');
+            console.error("Login failed:", error);
+            alert("Đăng nhập thất bại. Vui lòng thử lại.");
           }
         },
       });
 
-      googleButtonRef.current.innerHTML = '';
+      googleButtonRef.current.innerHTML = "";
       window.google.accounts.id.renderButton(googleButtonRef.current, {
-        type: 'standard',
-        shape: 'pill',
-        theme: 'outline',
-        text: 'signin_with',
-        size: 'large',
-        width: '320',
+        type: "standard",
+        shape: "pill",
+        theme: "outline",
+        text: "signin_with",
+        size: "large",
+        width: "320",
       });
 
       setGoogleReady(true);
@@ -58,8 +58,8 @@ export default function LoginPage() {
       return;
     }
 
-    const script = document.createElement('script');
-    script.src = 'https://accounts.google.com/gsi/client';
+    const script = document.createElement("script");
+    script.src = "https://accounts.google.com/gsi/client";
     script.async = true;
     script.defer = true;
     script.onload = initializeGoogle;
@@ -73,7 +73,7 @@ export default function LoginPage() {
   }, [isAuthenticated, login, navigate]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-linear-to-br from-blue-500 to-blue-600 flex items-center justify-center p-4">
       <div className="bg-white rounded-lg shadow-xl p-8 max-w-md w-full">
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-blue-600 mb-2">📚</h1>
@@ -86,7 +86,9 @@ export default function LoginPage() {
         </div>
 
         {!googleReady && (
-          <p className="text-center text-sm text-gray-500 mt-3">Đang tải Google Sign-In...</p>
+          <p className="text-center text-sm text-gray-500 mt-3">
+            Đang tải Google Sign-In...
+          </p>
         )}
 
         <p className="text-center text-gray-600 text-sm mt-8">

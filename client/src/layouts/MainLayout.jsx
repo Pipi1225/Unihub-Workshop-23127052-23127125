@@ -31,12 +31,14 @@ export default function Layout({ children }) {
                 >
                   Danh sách Workshop
                 </Link>
-                <Link
-                  to="/my-workshops"
-                  className={`px-3 py-2 text-gray-700 hover:text-blue-600 ${isActive("/my-workshops")}`}
-                >
-                  Workshop Của Tôi
-                </Link>
+                {!isAdmin && (
+                  <Link
+                    to="/my-workshops"
+                    className={`px-3 py-2 text-gray-700 hover:text-blue-600 ${isActive("/my-workshops")}`}
+                  >
+                    Workshop Của Tôi
+                  </Link>
+                )}
                 {isAdmin && (
                   <Link
                     to="/admin"

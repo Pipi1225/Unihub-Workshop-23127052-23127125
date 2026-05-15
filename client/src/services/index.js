@@ -145,6 +145,18 @@ export const registrationService = {
   },
 };
 
+export const paymentService = {
+  getMockStatus: async () => {
+    const response = await api.get("/api/payments/mock-status");
+    return response.data?.mode ?? response.data;
+  },
+
+  setMockStatus: async (mode) => {
+    const response = await api.put("/api/payments/mock-status", { mode });
+    return response.data?.mode ?? response.data;
+  },
+};
+
 export const statsService = {
   // Get admin statistics
   getStatistics: async () => {

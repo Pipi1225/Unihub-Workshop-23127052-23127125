@@ -23,7 +23,7 @@ import AdminDashboardPage from "./pages/AdminDashboardPage";
 import "./App.css";
 
 function AppRoutes() {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, isAdmin } = useAuth();
 
   return (
     <Routes>
@@ -58,7 +58,7 @@ function AppRoutes() {
         element={
           <MainLayout>
             <ProtectedRoute>
-              <MyWorkshopsPage />
+              {isAdmin ? <Navigate to="/admin" replace /> : <MyWorkshopsPage />}
             </ProtectedRoute>
           </MainLayout>
         }
@@ -102,7 +102,7 @@ function AppRoutes() {
         element={
           <MainLayout>
             <ProtectedRoute>
-              <QrCodePage />
+              {isAdmin ? <Navigate to="/admin" replace /> : <QrCodePage />}
             </ProtectedRoute>
           </MainLayout>
         }

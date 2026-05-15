@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { statsService, workshopService } from "../services";
+import { paymentService, statsService, workshopService } from "../services";
 import { formatPrice, formatDate } from "../utils/helpers";
 
 export default function AdminDashboardPage() {
@@ -7,9 +7,13 @@ export default function AdminDashboardPage() {
   const [workshops, setWorkshops] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [paymentMode, setPaymentMode] = useState("success");
+  const [paymentLoading, setPaymentLoading] = useState(true);
+  const [paymentUpdating, setPaymentUpdating] = useState(false);
 
   useEffect(() => {
     fetchData();
+    fetchPaymentMode();
   }, []);
 
   const fetchData = async () => {
@@ -31,6 +35,36 @@ export default function AdminDashboardPage() {
     }
   };
 
+  const fetchPaymentMode = async () => {
+    try {
+      setPaymentLoading(true);
+      const mode = await paymentService.getMockStatus();
+      setPaymentMode(String(mode || "success").toLowerCase());
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setPaymentLoading(false);
+    }
+  };
+
+  const handleTogglePayment = async () => {
+    if (paymentUpdating || paymentLoading) {
+      return;
+    }
+
+    const nextMode = paymentMode === "failure" ? "success" : "failure";
+    try {
+      setPaymentUpdating(true);
+      const updated = await paymentService.setMockStatus(nextMode);
+      setPaymentMode(String(updated || nextMode).toLowerCase());
+    } catch (err) {
+      console.error(err);
+      setError("Không thể cập nhật trạng thái cổng thanh toán");
+    } finally {
+      setPaymentUpdating(false);
+    }
+  };
+
   const copyToClipboard = (text) => {
     navigator.clipboard.writeText(text);
   };
@@ -48,6 +82,28 @@ export default function AdminDashboardPage() {
       <h1 className="text-3xl font-bold text-gray-800 mb-8">
         Dashboard Quản Trị
       </h1>
+
+      <div className="flex items-center gap-3 mb-6">
+        <span className="text-sm text-gray-600">
+          Trạng thái cổng thanh toán:
+        </span>
+        <button
+          type="button"
+          onClick={handleTogglePayment}
+          disabled={paymentLoading || paymentUpdating}
+          style={{
+            backgroundColor: paymentMode === "failure" ? "#dc2626" : "#059669",
+          }}
+          className="inline-flex items-center gap-2 px-3 py-1.5 text-sm rounded-full font-semibold text-white shadow-sm transition hover:opacity-90 disabled:opacity-50"
+        >
+          <span className="inline-block h-2.5 w-2.5 rounded-full bg-white"></span>
+          {paymentLoading
+            ? "Đang tải..."
+            : paymentMode === "failure"
+              ? "OFF"
+              : "ON"}
+        </button>
+      </div>
 
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-6">
