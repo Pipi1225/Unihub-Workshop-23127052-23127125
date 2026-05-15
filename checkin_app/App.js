@@ -1,10 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AppState, View, Text, Alert, ActivityIndicator, Vibration, ScrollView } from "react-native";
+import { AppState, View, Text, Alert, ActivityIndicator, Vibration, ScrollView, TextInput, TouchableOpacity } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Camera, useCameraPermissions } from "expo-camera";
-import * as ImagePicker from "expo-image-picker";
 import styles from "./constants/styles";
-import { RETRY_DELAYS_MS, RETRY_STATE_KEY } from "./constants/config";
+import { API_BASE_URL, AUTH_TOKEN_KEY, AUTH_USER_KEY, RETRY_DELAYS_MS, RETRY_STATE_KEY } from "./constants/config";
 import { initDb, runSql } from "./services/db";
 import { applyRegistrations, pullRegistrations, pushPendingToServer } from "./services/syncService";
 import useBackgroundSync from "./hooks/useBackgroundSync";
@@ -14,18 +13,23 @@ import WorkshopSetupSection from "./components/WorkshopSetupSection";
 import StatsSection from "./components/StatsSection";
 import NetworkBarSection from "./components/NetworkBarSection";
 import ScannerSection from "./components/ScannerSection";
-import PhotoScanSection from "./components/PhotoScanSection";
 import FooterNote from "./components/FooterNote";
 
 export default function App() {
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
+  const [authLoading, setAuthLoading] = useState(true);
+  const [authToken, setAuthToken] = useState(null);
+  const [authUser, setAuthUser] = useState(null);
+  const [loginEmail, setLoginEmail] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [loginError, setLoginError] = useState("");
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [workshopId, setWorkshopId] = useState("");
   const [isSyncing, setIsSyncing] = useState(false);
   const [isPushing, setIsPushing] = useState(false);
   const [scanResult, setScanResult] = useState(null);
   const [stats, setStats] = useState({ total: 0, checkedIn: 0, pending: 0 });
   const [scannerKey, setScannerKey] = useState(0);
-  const [isPicking, setIsPicking] = useState(false);
   const [syncMessage, setSyncMessage] = useState("");
   const [flashColor, setFlashColor] = useState("");
   const retryStateRef = useRef({ timeoutId: null, index: 0 });
@@ -40,10 +44,59 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    let isMounted = true;
+
+    const loadAuthSession = async () => {
+      try {
+        const [token, userRaw] = await Promise.all([
+          AsyncStorage.getItem(AUTH_TOKEN_KEY),
+          AsyncStorage.getItem(AUTH_USER_KEY),
+        ]);
+
+        if (!isMounted) {
+          return;
+        }
+
+        setAuthToken(token || null);
+        setAuthUser(userRaw ? JSON.parse(userRaw) : null);
+      } catch (error) {
+        console.warn("[auth] Failed to load session:", error?.message || error);
+      } finally {
+        if (isMounted) {
+          setAuthLoading(false);
+        }
+      }
+    };
+
+    loadAuthSession();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
     requestCameraPermission().catch((error) => {
       console.warn("Camera permission request failed:", error?.message || error);
     });
   }, [requestCameraPermission]);
+
+  const persistAuthSession = useCallback(async (token, user) => {
+    await AsyncStorage.setItem(AUTH_TOKEN_KEY, token);
+    await AsyncStorage.setItem(AUTH_USER_KEY, JSON.stringify(user));
+    setAuthToken(token);
+    setAuthUser(user);
+  }, []);
+
+  const clearAuthSession = useCallback(async () => {
+    await AsyncStorage.multiRemove([AUTH_TOKEN_KEY, AUTH_USER_KEY]);
+    setAuthToken(null);
+    setAuthUser(null);
+    setWorkshopId("");
+    setStats({ total: 0, checkedIn: 0, pending: 0 });
+    setScanResult(null);
+    setSyncMessage("");
+  }, []);
 
   useBackgroundSync({ onMessage: setSyncMessage });
 
@@ -69,6 +122,50 @@ export default function App() {
       console.warn("[retryState] clear failed:", error.message);
     }
   }, []);
+
+  const handleLogin = useCallback(async () => {
+    const email = loginEmail.trim().toLowerCase();
+    const password = loginPassword;
+
+    if (!email || !password) {
+      setLoginError("Please enter email and password.");
+      return;
+    }
+
+    setIsLoggingIn(true);
+    setLoginError("");
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.message || payload?.error || `Login failed (${response.status})`);
+      }
+
+      if (!payload?.access_token) {
+        throw new Error("Login response missing access token.");
+      }
+
+      const user = payload?.user || { email };
+      await persistAuthSession(payload.access_token, user);
+      setLoginPassword("");
+    } catch (error) {
+      setLoginError(error?.message || "Login failed.");
+    } finally {
+      setIsLoggingIn(false);
+    }
+  }, [loginEmail, loginPassword, persistAuthSession]);
+
+  const handleLogout = useCallback(() => {
+    clearAuthSession().catch(() => null);
+  }, [clearAuthSession]);
 
   useEffect(() => {
     let cancelled = false;
@@ -285,6 +382,27 @@ export default function App() {
     }, 800);
   }, []);
 
+  const formatCheckinTime = useCallback((value) => {
+    if (!value) {
+      return "unknown";
+    }
+
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+      return "unknown";
+    }
+
+    const pad = (part) => String(part).padStart(2, "0");
+    const yyyy = parsed.getFullYear();
+    const mm = pad(parsed.getMonth() + 1);
+    const dd = pad(parsed.getDate());
+    const hh = pad(parsed.getHours());
+    const min = pad(parsed.getMinutes());
+    const ss = pad(parsed.getSeconds());
+
+    return `${yyyy}-${mm}-${dd} ${hh}:${min}:${ss}`;
+  }, []);
+
   const handleScan = useCallback(async ({ data }) => {
     const hash = String(data || "").trim();
     setScanResult(null);
@@ -316,7 +434,7 @@ export default function App() {
       const row = result.rows.item(0);
       if (row.checkin_status === 1) {
         const nameTag = row.full_name ? ` - ${row.full_name}` : "";
-        const timeTag = row.checkin_time || "unknown";
+        const timeTag = formatCheckinTime(row.checkin_time);
         setScanResult({
           type: "warning",
           message: `Already checked in${nameTag} at ${timeTag}.`,
@@ -344,44 +462,6 @@ export default function App() {
     }
   }, [refreshStats, triggerFeedback, workshopId]);
 
-  const pickImage = useCallback(async () => {
-    setIsPicking(true);
-    try {
-      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (permission.status !== "granted") {
-        Alert.alert("Permission denied", "Please allow photo library access.");
-        return;
-      }
-
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        quality: 0.8,
-      });
-
-      if (!result.canceled && result.assets && result.assets[0]) {
-        const uri = result.assets[0].uri;
-
-        // Try scanning QR from the selected image and reuse the same handleScan flow
-        try {
-          const barcodes = await Camera.scanFromURLAsync(uri, ["qr"]);
-          if (Array.isArray(barcodes) && barcodes.length > 0 && barcodes[0].data) {
-            // reuse camera scan handler
-            await handleScan({ data: String(barcodes[0].data) });
-          } else {
-            Alert.alert('No QR found', 'Không phát hiện mã QR trong ảnh.');
-          }
-        } catch (scanErr) {
-          console.warn('scanFromURLAsync failed:', scanErr);
-          Alert.alert('Scan failed', 'Không thể quét QR từ ảnh.');
-        }
-      }
-    } catch (error) {
-      console.error(error);
-      Alert.alert("Image selection failed", "Please try again.");
-    } finally {
-      setIsPicking(false);
-    }
-  }, [handleScan]);
 
   const scanStatusColor = useMemo(() => {
     if (!scanResult) {
@@ -395,6 +475,56 @@ export default function App() {
     }
     return "#842029";
   }, [scanResult]);
+
+  if (authLoading) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" />
+        <Text>Loading session...</Text>
+      </View>
+    );
+  }
+
+  if (!authToken) {
+    return (
+      <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 24 }}>
+        <ScreenHeader />
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Staff Login</Text>
+          <Text style={styles.hint}>Sign in with your CHECKIN_STAFF account.</Text>
+          <View style={styles.inputGroup}>
+            <TextInput
+              style={styles.input}
+              placeholder="Email"
+              placeholderTextColor="#a0adc1"
+              autoCapitalize="none"
+              keyboardType="email-address"
+              value={loginEmail}
+              onChangeText={setLoginEmail}
+            />
+            <TextInput
+              style={styles.input}
+              placeholder="Password"
+              placeholderTextColor="#a0adc1"
+              secureTextEntry
+              value={loginPassword}
+              onChangeText={setLoginPassword}
+            />
+            {loginError ? (
+              <Text style={{ color: "#b42318", fontSize: 12 }}>{loginError}</Text>
+            ) : null}
+            <TouchableOpacity
+              style={[styles.button, isLoggingIn && styles.buttonDisabled]}
+              onPress={handleLogin}
+              disabled={isLoggingIn}
+            >
+              <Text style={styles.buttonText}>{isLoggingIn ? "Signing in..." : "Sign in"}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </ScrollView>
+    );
+  }
 
   if (!cameraPermission) {
     return (
@@ -416,6 +546,13 @@ export default function App() {
   return (
     <ScrollView style={styles.container}>
       <ScreenHeader />
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Signed in</Text>
+        <Text style={styles.hint}>{authUser?.email || "Unknown user"}</Text>
+        <TouchableOpacity style={styles.button} onPress={handleLogout}>
+          <Text style={styles.buttonText}>Log out</Text>
+        </TouchableOpacity>
+      </View>
       <WorkshopSetupSection
         workshopId={workshopId}
         onChangeWorkshopId={setWorkshopId}
@@ -435,10 +572,6 @@ export default function App() {
         scanResult={scanResult}
         flashColor={flashColor}
         scanStatusColor={scanStatusColor}
-      />
-      <PhotoScanSection
-        isPicking={isPicking}
-        onPickImage={pickImage}
       />
       <FooterNote />
     </ScrollView>

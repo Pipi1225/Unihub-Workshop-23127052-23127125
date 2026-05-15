@@ -23,6 +23,8 @@
         ]
       }
     },
-    "plugins": []
+    "plugins": [
+      "expo-web-browser"
+    ]
   }
 }
