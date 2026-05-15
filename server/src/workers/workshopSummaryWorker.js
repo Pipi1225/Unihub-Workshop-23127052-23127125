@@ -43,19 +43,35 @@ worker.on("failed", async (job, err) => {
   if (!job) {
     return;
   }
-  console.error(
-    `[workshopSummaryWorker] Job ${job.id} failed: ${err.message}`,
-  );
+  console.error(`[workshopSummaryWorker] Job ${job.id} failed: ${err.message}`);
 
   const attempts = job.opts?.attempts || 0;
   if (attempts && job.attemptsMade >= attempts) {
     const workshopId = job.data?.workshop_id || job.data?.workshopId;
     if (workshopId) {
-      await prisma.workshops.update({
-        where: { id: workshopId },
-        data: { ai_status: "FAILED" },
-      });
-      await invalidateWorkshopsCache();
+      try {
+        // Only mark FAILED if the workshop is not already COMPLETED
+        const existing = await prisma.workshops.findUnique({
+          where: { id: workshopId },
+          select: { ai_status: true, description: true },
+        });
+
+        if (existing && existing.ai_status !== "COMPLETED") {
+          await prisma.workshops.update({
+            where: { id: workshopId },
+            data: { ai_status: "FAILED" },
+          });
+          await invalidateWorkshopsCache();
+        } else {
+          console.log(
+            `[workshopSummaryWorker] Skipping marking FAILED for ${workshopId} because ai_status=${existing?.ai_status}`,
+          );
+        }
+      } catch (e) {
+        console.error(
+          `[workshopSummaryWorker] Failed to set FAILED status: ${e.message}`,
+        );
+      }
     }
   }
 });
