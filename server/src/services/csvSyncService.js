@@ -13,8 +13,16 @@ function sleep(ms) {
 	return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function stripDiacritics(value) {
+	return String(value || "")
+		.normalize("NFD")
+		.replace(/[\u0300-\u036f]/g, "")
+		.replace(/đ/g, "d")
+		.replace(/Đ/g, "D");
+}
+
 function normalizeHeader(header) {
-	return String(header || "")
+	return stripDiacritics(header)
 		.replace(/^\uFEFF/, "")
 		.trim()
 		.toLowerCase()
