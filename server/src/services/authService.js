@@ -1,6 +1,7 @@
 const { OAuth2Client } = require("google-auth-library");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
+const bcrypt = require("bcryptjs");
 const prisma = require("../config/prisma");
 
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
@@ -92,6 +93,45 @@ function createAccessToken(user) {
   );
 }
 
+function isBcryptHash(value) {
+  return /^\$2[aby]\$/.test(String(value || ""));
+}
+
+function safeEqual(left, right) {
+  if (!left || !right) {
+    return false;
+  }
+
+  const leftBuffer = Buffer.from(String(left));
+  const rightBuffer = Buffer.from(String(right));
+  if (leftBuffer.length !== rightBuffer.length) {
+    return false;
+  }
+
+  return crypto.timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+async function verifyPassword(plainPassword, passwordHash) {
+  if (!passwordHash) {
+    return false;
+  }
+
+  const normalizedHash = String(passwordHash).trim();
+  if (!normalizedHash) {
+    return false;
+  }
+
+  if (isBcryptHash(normalizedHash)) {
+    return bcrypt.compare(plainPassword, normalizedHash);
+  }
+
+  if (normalizedHash.startsWith("plain:")) {
+    return safeEqual(plainPassword, normalizedHash.slice("plain:".length));
+  }
+
+  return safeEqual(plainPassword, normalizedHash);
+}
+
 async function issueRefreshToken(userId) {
   const rawToken = crypto.randomUUID();
   const ttlDays = Number(process.env.JWT_REFRESH_TTL_DAYS || 7);
@@ -129,6 +169,51 @@ async function findActiveUserByEmail(email) {
 async function loginWithGoogle(credential) {
   const payload = await verifyGoogleCredential(credential);
   const user = await findActiveUserByEmail(payload.email);
+  const accessToken = createAccessToken(user);
+  const refreshToken = await issueRefreshToken(user.id);
+
+  return {
+    user: {
+      id: user.id,
+      email: user.email,
+      full_name: user.full_name,
+      role: user.role,
+    },
+    accessToken,
+    refreshToken,
+  };
+}
+
+async function loginWithPassword(email, password) {
+  const normalizedEmail = String(email || "").trim().toLowerCase();
+  const normalizedPassword = String(password || "");
+
+  if (!normalizedEmail || !normalizedPassword) {
+    throw Object.assign(new Error("Missing email or password"), {
+      statusCode: 400,
+    });
+  }
+
+  const user = await findActiveUserByEmail(normalizedEmail);
+  if (user.role !== "CHECKIN_STAFF") {
+    throw Object.assign(new Error("Forbidden: role is not CHECKIN_STAFF"), {
+      statusCode: 403,
+    });
+  }
+
+  if (!user.password_hash) {
+    throw Object.assign(new Error("Password not set for this account"), {
+      statusCode: 403,
+    });
+  }
+
+  const isValid = await verifyPassword(normalizedPassword, user.password_hash);
+  if (!isValid) {
+    throw Object.assign(new Error("Invalid email or password"), {
+      statusCode: 401,
+    });
+  }
+
   const accessToken = createAccessToken(user);
   const refreshToken = await issueRefreshToken(user.id);
 
@@ -190,6 +275,7 @@ async function revokeRefreshToken(refreshToken) {
 
 module.exports = {
   loginWithGoogle,
+  loginWithPassword,
   refreshAccessToken,
   revokeRefreshToken,
 };
