@@ -64,8 +64,16 @@ async function verifyGoogleCredential(credential) {
   const allowedAdminEmails = parseAllowedEmails(
     process.env.ALLOWED_ADMIN_EMAILS,
   );
+  const allowedStaffEmails = parseAllowedEmails(
+    process.env.ALLOWED_STAFF_EMAILS,
+  );
+  const allowedUserEmails = parseAllowedEmails(process.env.ALLOWED_USER_EMAILS);
 
-  if (!isEmailInList(payload.email, allowedAdminEmails)) {
+  if (
+    !isEmailInList(payload.email, allowedAdminEmails) &&
+    !isEmailInList(payload.email, allowedStaffEmails) &&
+    !isEmailInList(payload.email, allowedUserEmails)
+  ) {
     const allowedDomains = parseAllowedDomains(
       process.env.ALLOWED_EMAIL_DOMAINS,
     );

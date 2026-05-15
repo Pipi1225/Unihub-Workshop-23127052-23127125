@@ -6,7 +6,7 @@ Tính năng này phục vụ hai nhóm người dùng chính với các quyền 
 
 - **Sinh viên**: Truy cập để xem danh sách lịch trình và thông tin chi tiết của tất cả các workshop đang mở. Luồng này đòi hỏi tốc độ cao vì phải gánh tải 12.000 lượt truy cập đồng thời.
 
-- **Ban tổ chức (Admin)**: Thực hiện các thao tác CRUD (Tạo mới, Cập nhật, Xóa) workshop. Đặc biệt, tính năng hỗ trợ Ban tổ chức tải lên file PDF giới thiệu sự kiện; hệ thống sẽ đưa vào hàng đợi để xử lý ngầm và gọi AI (Gemini/OpenAI) trích xuất thành đoạn văn tóm tắt.
+- **Ban tổ chức (Admin)**: Thực hiện các thao tác CRUD (Tạo mới, Cập nhật, Xóa) workshop. Đặc biệt, tính năng hỗ trợ Ban tổ chức tải lên file PDF giới thiệu sự kiện; hệ thống sẽ đưa vào hàng đợi để xử lý ngầm và gọi AI (ưu tiên Gemini, fallback OpenAI nếu có cấu hình) trích xuất thành đoạn văn tóm tắt.
 
 ## Luồng chính
 
@@ -32,8 +32,8 @@ Tính năng này phục vụ hai nhóm người dùng chính với các quyền 
 
 - **B2. Xác thực & Phân quyền**: Middleware giải mã JWT Token, trích xuất role. Xác nhận role === 'ORGANIZER', nếu sai thì chặn ngay.
 
-- **B3. Khởi tạo dữ liệu (Database Transaction)**: Backend lưu file PDF vào thư mục cục bộ của server (được mount thông qua Docker Volume để dữ liệu không bị mất khi restart container).
-  - Insert bản ghi mới vào bảng Workshops trên PostgreSQL với ai_summary_status = 'PROCESSING'.
+- **B3. Khởi tạo dữ liệu (Database Transaction)**: Backend lưu file PDF theo cấu hình storage: ưu tiên upload lên Supabase Storage khi có cấu hình đầy đủ, fallback về thư mục cục bộ của server nếu không có cấu hình.
+  - Insert bản ghi mới vào bảng Workshops trên PostgreSQL với `ai_status = 'PROCESSING'` (đồng thời API response có alias `ai_summary_status` để tương thích UI cũ).
 
 - **B4. Đẩy tác vụ nền (Queue)**: Backend tạo một thông điệp (chứa workshop_id và đường dẫn file PDF), đẩy vào Redis Message Queue (sử dụng BullMQ). API trả về ngay HTTP Status 201 Created cho Frontend để không làm admin phải chờ đợi.
 
@@ -41,7 +41,7 @@ Tính năng này phục vụ hai nhóm người dùng chính với các quyền 
   - Đọc file PDF, làm sạch text (xóa ký tự rác).
   - Gửi text này đến External API của AI Provider (Gemini) với prompt kiểu: "Hãy tóm tắt nội dung sự kiện này trong 150 chữ".
 
-- **B6. Cập nhật kết quả**: Nhận kết quả từ AI, Worker thực hiện lệnh UPDATE Workshops SET description = <kết quả>, ai_summary_status = 'COMPLETED' WHERE id = workshop_id.
+- **B6. Cập nhật kết quả**: Nhận kết quả từ AI, Worker thực hiện lệnh UPDATE Workshops SET description = <kết quả>, ai_status = 'COMPLETED' WHERE id = workshop_id.
 
 - **B7. Xóa Cache**: Worker ra lệnh xóa (Invalidate) cache danh sách workshop trên Redis, ép hệ thống nạp lại danh sách mới nhất ở lần truy cập tiếp theo của sinh viên.
 
@@ -68,13 +68,13 @@ Tính năng này phục vụ hai nhóm người dùng chính với các quyền 
 
 **Trigger**: API của Gemini bị lỗi trả về 5xx hoặc quá 30 giây không phản hồi.
 
-**Xử lý**: Job trong BullMQ sẽ tự động thử lại (Retry) với cơ chế Exponential Backoff (sau 1p, 2p, 4p). Nếu sau 3 lần vẫn thất bại, Worker cập nhật ai_summary_status = 'FAILED'. Frontend hiển thị thông báo để Ban tổ chức biết và tự nhập tay nội dung mô tả. Đồng thời phía sinh viên khi xem nội dung mô tả sẽ trở thành "Đang cập nhật mô tả."
+**Xử lý**: Job trong BullMQ sẽ tự động thử lại (Retry) với cơ chế Exponential Backoff (sau 1p, 2p, 4p). Nếu sau 3 lần vẫn thất bại, Worker cập nhật `ai_status = 'FAILED'`. Frontend hiển thị thông báo để Ban tổ chức biết và tự nhập tay nội dung mô tả. Đồng thời phía sinh viên khi xem nội dung mô tả sẽ trở thành "Đang cập nhật mô tả."
 
 ### 3.4. Cache Miss cục bộ (Redis Crash lúc đọc dữ liệu)
 
 **Trigger**: Khi 12.000 sinh viên truy cập, Redis gặp sự cố không thể trả về cache.
 
-**Xử lý**: Backend áp dụng Try-Catch, rẽ nhánh luồng đọc dữ liệu thẳng xuống PostgreSQL. Tuy nhiên, để tránh sập DB, API Gateway sẽ bóp Rate Limit chặt hơn (Fall-back Mode) để giới hạn tải cho đến khi Redis được phục hồi.
+**Xử lý**: Backend áp dụng Try-Catch, rẽ nhánh luồng đọc dữ liệu thẳng xuống PostgreSQL khi cache Redis lỗi. Dữ liệu vẫn trả về được, nhưng hiệu năng có thể giảm cho đến khi Redis được phục hồi.
 
 ## Ràng buộc
 

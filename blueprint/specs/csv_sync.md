@@ -12,7 +12,7 @@ Tính năng này là một tiến trình chạy ngầm (Cronjob Worker), có nhi
 
 ### Các bước
 
-- **B1. Trigger (Kích hoạt)**: Hệ thống sử dụng tính năng Repeatable Jobs của thư viện BullMQ (Redis) để cấu hình một tác vụ chạy ngầm định kỳ vào lúc 02:00 AM (Cron expression: 0 2 \* \* \*), tự động đánh thức Worker.
+- **B1. Trigger (Kích hoạt)**: Hệ thống sử dụng `node-cron` để lập lịch chạy định kỳ theo `CSV_SYNC_CRON` (mặc định: `0 2 * * *`). Tác vụ đồng bộ dùng Redis lock để đảm bảo chỉ một instance thực thi tại một thời điểm.
 
 - **B2. Kiểm tra File (File System Check)**: Worker quét thư mục /data/import tìm file CSV mới nhất.
 
@@ -63,7 +63,7 @@ Lượng RAM tiêu thụ của Node.js Worker khi đọc file CSV không đượ
 
 ### Tính độc lập (Isolation)
 
-Tiến trình đồng bộ CSV phải chạy trên một Thread/Process riêng biệt (hoặc 1 container Docker riêng), tuyệt đối không dùng chung luồng thực thi (Event Loop) với Core Backend API để không làm chặn (Block) các request HTTP của người dùng.
+Trong kiến trúc local hiện tại, scheduler CSV được bootstrap trong process API chính nhưng tác vụ đồng bộ sử dụng streaming + batch + delay để giảm ảnh hưởng lên request realtime. Khi triển khai production, có thể tách sang process/container riêng để cô lập tải tốt hơn.
 
 ### Tính Lũy đẳng (Idempotency)
 

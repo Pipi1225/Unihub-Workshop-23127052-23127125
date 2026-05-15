@@ -4,7 +4,7 @@
 
 Tính năng quản lý danh tính người dùng của UniHub được chia làm 2 tầng rõ rệt:
 
-- **Xác thực (Authentication - AuthN)**: Tích hợp OAuth 2.0 (Google Sign-In) để xác minh danh tính người dùng thông qua email trường đại học (VD: @student.truong.edu.vn), loại bỏ hoàn toàn việc lưu trữ mật khẩu nhạy cảm trên hệ thống.
+- **Xác thực (Authentication - AuthN)**: Hiện tại backend tích hợp OAuth 2.0 (Google Sign-In) để xác minh danh tính người dùng. Ngoài kiểm tra domain, hệ thống còn hỗ trợ allowlist email cụ thể qua các biến `ALLOWED_ADMIN_EMAILS`, `ALLOWED_STAFF_EMAILS`, `ALLOWED_USER_EMAILS`.
 
 - **Phân quyền (Authorization - AuthZ)**: Áp dụng mô hình RBAC (Role-Based Access Control) thông qua JWT. Hệ thống cấp phát Access Token (thời hạn ngắn) và Refresh Token (thời hạn dài) để phân luồng người dùng vào 3 nhóm quyền cốt lõi: STUDENT, ORGANIZER, và CHECKIN_STAFF.
 
@@ -12,14 +12,19 @@ Tính năng quản lý danh tính người dùng của UniHub được chia làm
 
 ### Luồng 2.1: Xác thực Đăng nhập (Google OAuth & JWT Generation)
 
-**Bối cảnh**: Sinh viên (hoặc Ban tổ chức) lần đầu truy cập vào hệ thống UniHub. Đối với nhân sự Check-in sử dụng Mobile App, thao tác Đăng nhập và lấy JWT Token bắt buộc phải thực hiện vào thời điểm đầu ngày (khi có kết nối WiFi) trước khi đi vào khu vực mất mạng để quét QR.
+**Bối cảnh**: Sinh viên (hoặc Ban tổ chức) truy cập hệ thống UniHub trên Web App và đăng nhập bằng Google để nhận JWT.
+
+**Ghi chú triển khai check-in app**: Ở bản local hiện tại, `checkin_app` chưa tích hợp màn hình đăng nhập và cơ chế đính kèm JWT. Trên upstream repo có kế hoạch thêm luồng đăng nhập staff riêng (email/mật khẩu) để đơn giản hóa triển khai trên giả lập Android.
 
 **Các bước:**
 
-- **B1. Trigger**: Người dùng bấm nút "Đăng nhập bằng Google" trên giao diện Web/Mobile.
+- **B1. Trigger**: Người dùng bấm nút "Đăng nhập bằng Google" trên giao diện Web.
 - **B2. Xác thực bên thứ 3**: Cửa sổ Google OAuth hiện ra, người dùng chọn tài khoản email trường và đồng ý cấp quyền. Google trả về cho Frontend một chuỗi Google Credential Token.
 - **B3. Gửi Token lên Server**: Frontend gửi chuỗi Token này lên API POST /api/auth/google.
-- **B4. Xác minh & Đối chiếu**: Backend sử dụng thư viện google-auth-library để xác minh Token. Nếu hợp lệ, trích xuất email và truy vấn vào bảng Users trong PostgreSQL:
+- **B4. Xác minh & Đối chiếu**: Backend sử dụng thư viện google-auth-library để xác minh Token. Nếu hợp lệ, trích xuất email và kiểm tra theo thứ tự:
+  - Nếu email nằm trong allowlist (`ALLOWED_ADMIN_EMAILS`, `ALLOWED_STAFF_EMAILS`, `ALLOWED_USER_EMAILS`) -> cho phép.
+  - Nếu không nằm trong allowlist -> kiểm tra domain theo `ALLOWED_EMAIL_DOMAINS`.
+  - Sau khi vượt qua kiểm tra policy email, backend truy vấn bảng Users trong PostgreSQL.
   - _(Lưu ý: Tài khoản STUDENT đã được Worker tạo sẵn qua luồng CSV Sync mỗi đêm, tài khoản ORGANIZER đã được seed sẵn)._
   - Nếu email **TỒN TẠI** trong DB → Trích xuất user_id và role.
 - **B5. Cấp phát JWT**: Backend tạo 2 loại token:

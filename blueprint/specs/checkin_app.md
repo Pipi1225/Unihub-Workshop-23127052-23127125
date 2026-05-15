@@ -6,6 +6,13 @@ Tính năng này dành riêng cho nhân sự vận hành tại cửa sự kiện
 
 Điểm mấu chốt của tính năng là kiến trúc Offline-first: Mọi thao tác kiểm tra vé và điểm danh đều giao tiếp trực tiếp với cơ sở dữ liệu cục bộ (Expo SQLite) trên điện thoại. Điều này đảm bảo tốc độ quét cực nhanh (< 2 giây) và hệ thống vẫn hoạt động trơn tru 100% ngay cả khi khu vực tổ chức bị rớt mạng Internet hoàn toàn, sau đó tự động đồng bộ (sync) lên server khi có mạng.
 
+**Trạng thái triển khai hiện tại (local)**:
+- App đã triển khai đầy đủ luồng offline-first, pull/push sync, retry và background sync.
+- App **chưa** có màn hình login staff và **chưa** đính kèm `Authorization: Bearer <token>` khi gọi API sync.
+
+**Ghi chú upstream**:
+- Trên nhánh upstream (chưa pull về local) có kế hoạch thêm luồng đăng nhập staff bằng email/mật khẩu để lấy JWT, giảm độ phức tạp so với OAuth trên giả lập Android.
+
 ## Luồng chính
 
 Kiến trúc Offline-first chia luồng hoạt động thành 3 giai đoạn tách biệt:
@@ -19,6 +26,9 @@ Kiến trúc Offline-first chia luồng hoạt động thành 3 giai đoạn tá
 - **B1. Trigger**: Nhân sự chọn Workshop (nhập mã) mình phụ trách và chọn "Đồng bộ dữ liệu".
 
 - **B2. Fetch Data**: Mobile App gọi API GET /api/sync-data?workshop_id=XYZ.
+
+  - Theo thiết kế bảo mật backend, endpoint này yêu cầu role `CHECKIN_STAFF` (JWT).
+  - Ở bản local hiện tại, app chưa tự đính kèm JWT; phần này sẽ được đồng bộ lại khi merge patch login staff từ upstream.
 
 - **B3. Xử lý Server**: Backend truy vấn PostgreSQL, trả về danh sách toàn bộ các vé hợp lệ của workshop đó (bao gồm: registration_id, qr_code_hash, workshop_id, checkin_status, checkin_time, full_name).
 
@@ -58,6 +68,9 @@ Khi camera trong app gặp vấn đề, nhân sự có thể chọn ảnh QR t�
 - **B2. Gom dữ liệu**: App quét trong Local SQLite những bản ghi có sync_status = 'PENDING' và gom thành một mảng JSON (Batch payload).
 
 - **B3. Đẩy dữ liệu**: App gọi API PUT /api/registrations/sync đính kèm mảng JSON lên Backend.
+
+  - Theo thiết kế bảo mật backend, endpoint này yêu cầu role `CHECKIN_STAFF` (JWT).
+  - Ở bản local hiện tại, app chưa tự đính kèm JWT; phần này sẽ được đồng bộ lại khi merge patch login staff từ upstream.
 
 - **B4. Hợp nhất (Merge)**: Backend nhận dữ liệu, cập nhật bảng Registrations trên PostgreSQL.
 
@@ -110,7 +123,7 @@ Khi đang ở trạng thái Offline, Local SQLite trên thiết bị là Nguồn
 
 ### Test Case 1 (Offline Mode)
 
-Đăng nhập app, tải dữ liệu sự kiện. Sau đó TẮT hoàn toàn WiFi/4G (chuyển sang Airplane mode). Thực hiện quét 1 mã QR hợp lệ. Giao diện báo thành công. Đóng app, mở lại, số liệu điểm danh cục bộ vẫn được giữ nguyên.
+Mở app, tải dữ liệu sự kiện (sau khi đã có dữ liệu local hợp lệ). Sau đó TẮT hoàn toàn WiFi/4G (chuyển sang Airplane mode). Thực hiện quét 1 mã QR hợp lệ. Giao diện báo thành công. Đóng app, mở lại, số liệu điểm danh cục bộ vẫn được giữ nguyên.
 
 ### Test Case 2 (Sync Behavior)
 

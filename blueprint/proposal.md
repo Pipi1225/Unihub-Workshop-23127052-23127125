@@ -42,16 +42,16 @@ Hệ thống phục vụ 3 nhóm người dùng cốt lõi:
 ### Những gì thuộc phạm vi
 
 - Web App (ReactJS): Giao diện tập trung phân quyền theo Role. Sinh viên dùng để xem lịch, đăng ký và tải mã QR. Ban tổ chức dùng để quản lý workshop và xem thống kê.
-- Mobile App (Native Android): ành riêng cho nhân sự check-in. Thiết kế theo kiến trúc Offline-first sử dụng Room/SQLite để lưu mã QR và ghi nhận điểm danh khi mất mạng, tự động đồng bộ lên server khi có mạng.
-- Backend API & Worker (Node.js): Cung cấp RESTful API, xử lý chịu tải (Rate Limiting), chống tranh chấp (Concurrency) và Worker chạy ngầm đồng bộ file CSV.
+- Mobile App (Expo React Native): Dành riêng cho nhân sự check-in. Thiết kế theo kiến trúc Offline-first sử dụng expo-sqlite để lưu mã QR và ghi nhận điểm danh khi mất mạng, tự động đồng bộ lên server khi có mạng.
+- Backend API & Worker (Node.js): Cung cấp RESTful API, xử lý chịu tải (Rate Limiting), chống tranh chấp (Concurrency) và các worker chạy ngầm cho notification, payment retry, workshop AI summary; riêng CSV Sync được lập lịch tự động bằng cron (`CSV_SYNC_CRON`).
 - Cơ sở dữ liệu: PostgreSQL làm cơ sở dữ liệu chính (ACID) và Redis để xử lý Caching, Distributed Lock, Message Queue.
-- Tích hợp AI: Kết nối API LLM (Gemini/OpenAI) để xử lý tóm tắt file PDF giới thiệu workshop.
+- Tích hợp AI: Kết nối API LLM Gemini để xử lý tóm tắt file PDF giới thiệu workshop.
 
 ### Những gì không thuộc phạm vi
 
 - Cổng thanh toán thật: Xây dựng Mock Payment Service nội bộ, cố tình cài cắm lỗi (timeout, delay) để giả lập sự thiếu ổn định và kiểm thử cơ chế Idempotency Key (chống trừ tiền 2 lần).
 - Hạ tầng Production: Sản phẩm nộp bao gồm Source Code và file Docker Compose. Hệ thống được đóng gói bằng Docker để chạy và demo hoàn chỉnh trên môi trường Local.
-- Hệ thống gửi Email/SMS thật: Sẽ log ra console hoặc dùng các dịch vụ mock (như Mailtrap) để kiểm thử luồng message broker.
+- Hệ thống gửi SMS thật: Chưa nằm trong phạm vi. Kênh thông báo hiện tại dùng Email qua SMTP (Gmail) cho môi trường development/demo.
 
 ## Các rủi ro có thể xảy ra & Ràng buộc hệ thống
 
@@ -63,6 +63,8 @@ Hệ thống được thiết kế dưới giả định phải đối mặt v�
   - Ràng buộc: Phải giới hạn tần suất request (Rate Limiting) ở gateway và phân luồng xử lý bất đồng bộ (Queue) cho các tác vụ nặng.
 - Hệ thống bên thứ 3 bất ổn: Cổng thanh toán có thể timeout, không trả về kết quả.
   - Ràng buộc: Giao diện xem lịch không được chết theo cổng thanh toán; giao dịch phải có Idempotency Key để an toàn khi retry.
+- Kiểm soát truy cập người dùng: Login Google có thể phát sinh tài khoản ngoài đối tượng tham gia.
+  - Ràng buộc: Bắt buộc áp dụng chính sách allowlist theo domain/email (`ALLOWED_EMAIL_DOMAINS`, `ALLOWED_ADMIN_EMAILS`, `ALLOWED_STAFF_EMAILS`, `ALLOWED_USER_EMAILS`) trước khi cấp quyền truy cập hệ thống.
 - Phân mảnh dữ liệu (Data Inconsistency): Rớt mạng khi đang check-in dẫn đến sai lệch số liệu điểm danh.
   - Ràng buộc: Mobile app phải là Single Source of Truth tạm thời khi offline và giải quyết xung đột (conflict resolution) an toàn cho đến khi online trở lại.
 - Dữ liệu “bẩn” từ hệ thống cũ: File CSV import định kỳ có thể sai định dạng, có dữ liệu rác, trùng lặp hoặc thiếu trường.

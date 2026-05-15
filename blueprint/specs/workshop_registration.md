@@ -24,7 +24,7 @@ Tính năng này phải giải quyết bài toán "tranh chấp chỗ ngồi" (C
 
 - **B5. Kiểm tra điều kiện (Validation)**: Request lấy được Lock sẽ mở một Database Transaction (phiên giao dịch) trên PostgreSQL và thực hiện các kiểm tra:
   - Truy vấn xem bản ghi user_id và workshop_id này đã tồn tại trong bảng Registrations chưa (Chống đăng ký trùng).
-  - Truy vấn available_slots của workshop (sử dụng lệnh SELECT ... FOR UPDATE để khóa cứng dòng dữ liệu này ở mức cơ sở dữ liệu, đề phòng Redis bị lỗi). Phải đảm bảo available_slots > 0.
+  - Kiểm tra và trừ slot bằng thao tác cập nhật có điều kiện (`UPDATE ... WHERE available_slots > 0`) trong transaction để đảm bảo không overbook ngay cả khi có tranh chấp.
 
 - **B6. Thực thi Giao dịch (Execute Transaction)**: Backend trừ số lượng chỗ: `UPDATE Workshops SET available_slots = available_slots - 1`.
   - Khởi tạo chuỗi mã hóa (Hash) duy nhất bằng UUID v4 để làm vé QR.
@@ -37,7 +37,7 @@ Tính năng này phải giải quyết bài toán "tranh chấp chỗ ngồi" (C
 
 - **B9. Phản hồi (Response)**: Backend trả về HTTP Status 200 OK (hoặc 201 Created). Frontend tắt loading và chuyển hướng sinh viên sang trang "Vé của tôi" (nếu miễn phí) hoặc trang "Thanh toán" (nếu có phí).
 
-- **B10. Khởi tạo bộ đếm thời gian giữ chỗ (Hold Timeout - Dành cho vé có phí)**: Nếu là workshop có phí, Backend sẽ lên lịch một tác vụ ngầm (Delayed Job bằng Redis BullMQ) hẹn giờ đúng 15 phút sau sẽ chạy. Nếu sau 15 phút mà vé vẫn ở trạng thái PENDING, hệ thống sẽ tự động hủy vé (status = CANCELLED) và hoàn trả lại số lượng chỗ (UPDATE Workshops SET available_slots = available_slots + 1).
+- **B10. Khởi tạo bộ đếm thời gian giữ chỗ (Hold Timeout - Dành cho vé có phí)**: Nếu là workshop có phí, Backend sẽ lên lịch một tác vụ ngầm (Delayed Job bằng Redis BullMQ) theo biến `PAID_HOLD_MINUTES` (mặc định hiện tại: 10 phút). Nếu quá thời gian mà vé vẫn ở trạng thái PENDING, hệ thống sẽ tự động hủy vé (status = CANCELLED) và hoàn trả lại số lượng chỗ (UPDATE Workshops SET available_slots = available_slots + 1).
 
 ## Kịch bản lỗi
 
@@ -69,7 +69,7 @@ Tính năng này phải giải quyết bài toán "tranh chấp chỗ ngồi" (C
 
 **Trigger**: Máy chủ chứa Redis bị sập. Hệ thống không thể dùng Redis để đếm Rate Limit hay phân phát Distributed Lock.
 
-**Xử lý**: Áp dụng Graceful Degradation. Backend bắt được lỗi kết nối Redis, tự động bỏ qua bước kiểm tra Rate Limit và bỏ qua bước lấy Distributed Lock. Yêu cầu đăng ký đẩy thẳng xuống PostgreSQL. Lúc này, cơ chế Row-level Lock (SELECT ... FOR UPDATE) của bản thân PostgreSQL sẽ gánh vác trách nhiệm chống Overbooking. Hiệu năng có thể giảm (database xử lý chậm hơn), nhưng tính toàn vẹn dữ liệu vẫn đạt 100%.
+**Xử lý**: Áp dụng Graceful Degradation. Backend bắt được lỗi kết nối Redis, tự động bỏ qua bước lấy Distributed Lock và tiếp tục xử lý đăng ký qua transaction PostgreSQL. Cơ chế cập nhật có điều kiện `available_slots > 0` vẫn đảm bảo không overbooking. Hiệu năng có thể giảm, nhưng tính toàn vẹn dữ liệu vẫn được giữ.
 
 ### 3.6. Lỗi kẹt giao dịch Database (Deadlock / DB Timeout)
 
@@ -79,9 +79,9 @@ Tính năng này phải giải quyết bài toán "tranh chấp chỗ ngồi" (C
 
 ### 3.7. Vé bị hủy do quá hạn thanh toán (Payment Timeout)
 
-**Trigger**: Sau 15 phút kể từ lúc giữ chỗ thành công, hệ thống không nhận được xác nhận thanh toán thành công từ Mock Payment Gateway.
+**Trigger**: Sau `PAID_HOLD_MINUTES` (mặc định local hiện tại: 10 phút) kể từ lúc giữ chỗ thành công, hệ thống không nhận được xác nhận thanh toán thành công từ Mock Payment Gateway.
 
-**Xử lý**: Delayed Job kích hoạt. Chuyển payment_status của bản ghi Registrations thành CANCELLED. Trả lại 1 available_slots cho Workshop. Gửi email thông báo cho sinh viên: "Giao dịch giữ chỗ của bạn đã bị hủy do quá thời gian thanh toán."
+**Xử lý**: Delayed Job kích hoạt. Chuyển payment_status của bản ghi Registrations thành CANCELLED. Trả lại 1 available_slots cho Workshop.
 
 ## Ràng buộc
 
@@ -113,4 +113,4 @@ User đăng nhập với tài khoản có role `ORGANIZER` gọi API đăng ký.
 
 ### Test Case 4
 
-Sinh viên A đăng ký thành công workshop có phí (còn đúng 1 slot cuối), nhưng không thanh toán. Sinh viên B vào sau thấy báo "Hết chỗ". Đúng 15 phút sau, hệ thống hủy vé của A. Sinh viên B f5 lại trang, thấy còn 1 slot trống và có thể đăng ký thành công.
+Sinh viên A đăng ký thành công workshop có phí (còn đúng 1 slot cuối), nhưng không thanh toán. Sinh viên B vào sau thấy báo "Hết chỗ". Sau `PAID_HOLD_MINUTES` (mặc định local: 10 phút), hệ thống hủy vé của A. Sinh viên B f5 lại trang, thấy còn 1 slot trống và có thể đăng ký thành công.

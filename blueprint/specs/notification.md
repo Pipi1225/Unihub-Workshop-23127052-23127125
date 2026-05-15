@@ -4,7 +4,7 @@
 
 Hệ thống Thông báo chịu trách nhiệm gửi các thông tin quan trọng (như xác nhận đăng ký thành công, vé QR, thông báo hủy sự kiện) đến sinh viên.
 
-Tính năng này được thiết kế tách biệt hoàn toàn khỏi luồng API chính bằng kiến trúc Message Queue (Hàng đợi thông điệp). Đồng thời, code được cấu trúc theo Strategy Pattern (Mẫu thiết kế Chiến lược), đảm bảo hiện tại có thể gửi Email (qua Mailtrap), nhưng trong tương lai có thể dễ dàng thêm các kênh mới như Telegram, Zalo hay SMS mà không làm ảnh hưởng đến mã nguồn cũ.
+Tính năng này được thiết kế tách biệt hoàn toàn khỏi luồng API chính bằng kiến trúc Message Queue (Hàng đợi thông điệp). Đồng thời, code được cấu trúc theo Strategy Pattern (Mẫu thiết kế Chiến lược), đảm bảo hiện tại có thể gửi Email (qua SMTP cấu hình môi trường), nhưng trong tương lai có thể dễ dàng thêm các kênh mới như Telegram, Zalo hay SMS mà không làm ảnh hưởng đến mã nguồn cũ.
 
 ## Luồng chính
 
@@ -20,15 +20,15 @@ Tính năng này được thiết kế tách biệt hoàn toàn khỏi luồng A
 
 - **B4. Biên dịch Template (Templating)**: Lớp EmailProvider nhúng các biến (full_name, qr_code_hash) vào một file template HTML thiết kế sẵn cho đẹp mắt.
 
-- **B5. Gửi thông báo (Delivery)**: Sử dụng Nodemailer kết nối với SMTP của Mock Notification (Mailtrap) để thực hiện gửi email.
+- **B5. Gửi thông báo (Delivery)**: Sử dụng Nodemailer kết nối với SMTP được cấu hình trong môi trường (hiện tại dev/demo dùng Gmail SMTP) để thực hiện gửi email.
 
-- **B6. Ghi nhận thành công (Acknowledge)**: Worker nhận được phản hồi 250 OK từ Mailtrap. Nó đánh dấu Job là COMPLETED trong BullMQ và ghi log hệ thống.
+- **B6. Ghi nhận thành công (Acknowledge)**: Worker nhận được phản hồi thành công từ SMTP provider. Nó đánh dấu Job là COMPLETED trong BullMQ và ghi log hệ thống.
 
 ## Kịch bản lỗi
 
 ### 3.1. Máy chủ Email bị sập hoặc Timeout (Provider Down)
 
-**Trigger**: Dịch vụ SMTP của Mailtrap (hoặc Gmail/SendGrid sau này) gặp sự cố, không thể kết nối.
+**Trigger**: Dịch vụ SMTP đang sử dụng (Gmail/SendGrid/khác) gặp sự cố, không thể kết nối.
 
 **Xử lý**: BullMQ tự động bắt (catch) lỗi kết nối. Nó sẽ không đánh dấu Job là thất bại ngay, mà chuyển sang cơ chế Exponential Backoff (Thử lại sau 1 phút, 3 phút, 5 phút). Nếu sau 5 lần thử vẫn thất bại, Job sẽ được chuyển vào Dead Letter Queue - DLQ để Admin vào xem xét thủ công. Không có dữ liệu nào bị mất.
 
@@ -36,7 +36,7 @@ Tính năng này được thiết kế tách biệt hoàn toàn khỏi luồng A
 
 **Trigger**: Mặc dù tài khoản được đồng bộ tự động từ hệ thống cũ, nhưng do dữ liệu gốc bị "bẩn" (Ví dụ trong file CSV của trường, nhân vụ đào tạo gõ nhầm email sinh viên thành nguyenvana@gmailcom - thiếu dấu chấm). Dịch vụ SMTP từ chối gửi.
 
-**Xử lý**: Lỗi này là lỗi từ phía dữ liệu cứng, việc thử lại (Retry) cũng vô ích. Worker phân tích mã lỗi trả về từ Mailtrap (VD: 5xx Syntax error), lập tức đánh dấu Job là FAILED (Bỏ qua bước Exponential Backoff) và ghi log cảnh báo để Admin biết và cập nhật lại thông tin sinh viên. Không làm nghẽn các email hợp lệ khác trong hàng đợi.
+**Xử lý**: Lỗi này là lỗi từ phía dữ liệu cứng, việc thử lại (Retry) cũng vô ích. Worker phát hiện email không hợp lệ và đánh dấu Job là lỗi không thể khôi phục (Unrecoverable), sau đó ghi log cảnh báo để Admin biết và cập nhật lại thông tin sinh viên. Không làm nghẽn các email hợp lệ khác trong hàng đợi.
 
 ### 3.3. Tải đột biến hàng vạn thông báo (Queue Spike)
 
@@ -56,7 +56,7 @@ Luồng chính của API (Đăng ký/Thanh toán) tuyệt đối không được
 
 ### Môi trường Demo
 
-Toàn bộ email trong môi trường phát triển (Dev/Local) phải được chặn và chuyển hướng vào Mailtrap để tránh việc vô tình gửi hàng ngàn email rác ra ngoài thế giới thực, dẫn đến việc IP bị đưa vào Blacklist.
+Trong môi trường phát triển (Dev/Local), hệ thống dùng SMTP theo biến môi trường. Có thể cấu hình Gmail SMTP (như local hiện tại) hoặc Mailtrap tùy nhu cầu demo. Khi test tải lớn, nên dùng mailbox thử nghiệm để tránh gửi nhầm email thật.
 
 ## Tiêu chí chấp nhận
 
@@ -66,7 +66,7 @@ Toàn bộ email trong môi trường phát triển (Dev/Local) phải được 
 
 ### Test Case 2 (Email Delivery)
 
-Đăng ký thành công một workshop. Truy cập vào dashboard của Mailtrap, thấy một email xuất hiện với giao diện HTML chuẩn, chứa đúng họ tên sinh viên và link hình ảnh QR Code.
+Đăng ký thành công một workshop. Truy cập mailbox của SMTP provider đang cấu hình, thấy một email xuất hiện với giao diện HTML chuẩn, chứa đúng họ tên sinh viên và link/ảnh QR Code.
 
 ### Test Case 3 (Retry Mechanism)
 
