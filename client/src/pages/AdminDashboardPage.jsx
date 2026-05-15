@@ -177,48 +177,67 @@ export default function AdminDashboardPage() {
               <tbody>
                 {workshops.map((workshop) => (
                   <tr key={workshop.id} className="border-b hover:bg-gray-50">
-                    <td className="px-4 py-3">
-                      <a
-                        href={`/workshops/${workshop.id}`}
-                        className="text-blue-600 hover:underline"
-                      >
-                        {workshop.title}
-                      </a>
-                    </td>
-                    <td className="px-4 py-3">
-                      <code
-                        onClick={() => copyToClipboard(workshop.id)}
-                        className="text-xs bg-gray-100 px-2 py-1 rounded text-gray-700 cursor-pointer hover:bg-blue-100 hover:text-blue-700 transition-colors"
-                        title="Click để copy"
-                      >
-                        {workshop.id}
-                      </code>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-600">
-                      {formatDate(workshop.start_time)}
-                    </td>
-                    <td className="px-4 py-3">{formatPrice(workshop.price)}</td>
-                    <td className="px-4 py-3">
-                      <span className="text-sm">
-                        {workshop.sold_count || 0} / {workshop.total_slots}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">{workshop.sold_count || 0}</td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={`text-xs px-2 py-1 rounded text-white ${
-                          workshop.ai_status === "COMPLETED"
-                            ? "bg-green-600"
-                            : workshop.ai_status === "PROCESSING"
-                              ? "bg-blue-600"
-                              : workshop.ai_status === "PENDING"
-                                ? "bg-yellow-600"
-                                : "bg-red-600"
-                        }`}
-                      >
-                        {workshop.ai_status || "N/A"}
-                      </span>
-                    </td>
+                    {(() => {
+                      const totalSlots = Number(workshop.total_slots) || 0;
+                      const availableSlots = Number(workshop.available_slots);
+                      const derivedSoldCount = Number.isFinite(availableSlots)
+                        ? Math.max(totalSlots - availableSlots, 0)
+                        : 0;
+                      const soldCount = Number.isFinite(
+                        Number(workshop.sold_count),
+                      )
+                        ? Number(workshop.sold_count)
+                        : derivedSoldCount;
+
+                      return (
+                        <>
+                          <td className="px-4 py-3">
+                            <a
+                              href={`/workshops/${workshop.id}`}
+                              className="text-blue-600 hover:underline"
+                            >
+                              {workshop.title}
+                            </a>
+                          </td>
+                          <td className="px-4 py-3">
+                            <code
+                              onClick={() => copyToClipboard(workshop.id)}
+                              className="text-xs bg-gray-100 px-2 py-1 rounded text-gray-700 cursor-pointer hover:bg-blue-100 hover:text-blue-700 transition-colors"
+                              title="Click để copy"
+                            >
+                              {workshop.id}
+                            </code>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-600">
+                            {formatDate(workshop.start_time)}
+                          </td>
+                          <td className="px-4 py-3">
+                            {formatPrice(workshop.price)}
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className="text-sm">
+                              {soldCount} / {totalSlots}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3">{soldCount}</td>
+                          <td className="px-4 py-3">
+                            <span
+                              className={`text-xs px-2 py-1 rounded text-white ${
+                                workshop.ai_status === "COMPLETED"
+                                  ? "bg-green-600"
+                                  : workshop.ai_status === "PROCESSING"
+                                    ? "bg-blue-600"
+                                    : workshop.ai_status === "PENDING"
+                                      ? "bg-yellow-600"
+                                      : "bg-red-600"
+                              }`}
+                            >
+                              {workshop.ai_status || "N/A"}
+                            </span>
+                          </td>
+                        </>
+                      );
+                    })()}
                   </tr>
                 ))}
               </tbody>
