@@ -4,7 +4,7 @@
   "main": "index.js",
   "scripts": {
     "dev": "nodemon src/server.js",
-    "dev:all": "concurrently \"npm:dev\" \"npm:worker:notification\" \"npm:worker:registration\" \"npm:worker:payment\" \"npm:worker:workshop\" \"npm:csv:sync\" \"npm:notification:enqueue\"",
+    "dev:all": "concurrently \"npm:dev\" \"npm:worker:notification\" \"npm:worker:registration\" \"npm:worker:payment\" \"npm:worker:workshop\"",
     "csv:sync": "node src/scripts/runCsvSyncOnce.js",
     "worker:notification": "nodemon src/workers/notificationWorker.js",
     "worker:registration": "nodemon src/workers/registrationWorker.js",
