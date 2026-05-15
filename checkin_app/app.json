@@ -4,17 +4,27 @@
     "slug": "checkin-app",
     "version": "1.0.0",
     "orientation": "portrait",
-    "platforms": ["android", "ios"],
+    "platforms": [
+      "android",
+      "ios"
+    ],
     "jsEngine": "hermes",
     "android": {
       "package": "com.fptu.checkinapp",
-      "permissions": ["RECEIVE_BOOT_COMPLETED"]
+      "permissions": [
+        "RECEIVE_BOOT_COMPLETED"
+      ]
     },
     "ios": {
       "bundleIdentifier": "com.fptu.checkinapp",
       "infoPlist": {
-        "UIBackgroundModes": ["fetch"]
+        "UIBackgroundModes": [
+          "fetch"
+        ]
       }
-    }
+    },
+    "plugins": [
+      "expo-barcode-scanner"
+    ]
   }
 }

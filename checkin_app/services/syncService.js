@@ -1,5 +1,5 @@
 import { API_BASE_URL, PULL_ENDPOINT, PUSH_ENDPOINT } from "../constants/config";
-import { runSql } from "./db";
+import { runSql, runSqlTransaction } from "./db";
 
 function mapPullData(data) {
   if (Array.isArray(data)) {
@@ -24,48 +24,31 @@ export async function pullRegistrations(workshopId) {
 }
 
 export async function applyRegistrations(workshopId, items) {
-  await runSql("BEGIN TRANSACTION");
-  try {
-    await runSql(
+  await runSqlTransaction((exec) => {
+    exec(
       "DELETE FROM local_registrations WHERE workshop_id = ? AND sync_status != 'PENDING'",
       [workshopId]
     );
 
     for (const item of items) {
-      const registrationId = String(item.registration_id || item.id || "");
-      const qrHash = String(item.qr_code_hash || "");
-      const itemWorkshopId = String(item.workshop_id || workshopId || "");
+      const registrationId = String(item.registration_id || item.id || "").trim();
+      const qrHash = String(item.qr_code_hash || "").trim();
+      const itemWorkshopId = String(item.workshop_id || workshopId || "").trim();
       const fullName = String(item.full_name || item.fullName || "").trim();
-      if (!registrationId || !qrHash) {
-        continue;
-      }
 
-      if (!itemWorkshopId) {
-        continue;
-      }
-
-      const existing = await runSql(
-        "SELECT sync_status FROM local_registrations WHERE registration_id = ?",
-        [registrationId]
-      );
-      if (existing.rows.length > 0 && existing.rows.item(0).sync_status === "PENDING") {
+      if (!registrationId || !qrHash || !itemWorkshopId) {
         continue;
       }
 
       const checkinStatus = item.checkin_status ? 1 : 0;
       const checkinTime = item.checkin_time || null;
 
-      await runSql(
-        "INSERT OR REPLACE INTO local_registrations (registration_id, qr_code_hash, workshop_id, full_name, checkin_status, checkin_time, sync_status) VALUES (?, ?, ?, ?, ?, ?, 'SYNCED')",
-        [registrationId, qrHash, itemWorkshopId, fullName, checkinStatus, checkinTime]
+      exec(
+        "INSERT OR REPLACE INTO local_registrations (registration_id, qr_code_hash, workshop_id, full_name, checkin_status, checkin_time, sync_status) SELECT ?, ?, ?, ?, ?, ?, 'SYNCED' WHERE NOT EXISTS (SELECT 1 FROM local_registrations WHERE registration_id = ? AND sync_status = 'PENDING')",
+        [registrationId, qrHash, itemWorkshopId, fullName, checkinStatus, checkinTime, registrationId]
       );
     }
-
-    await runSql("COMMIT");
-  } catch (error) {
-    await runSql("ROLLBACK");
-    throw error;
-  }
+  });
 }
 
 export async function pushPendingToServer() {
