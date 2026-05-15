@@ -8,14 +8,22 @@ Tính năng này dành riêng cho nhân sự vận hành tại cửa sự kiện
 
 **Trạng thái triển khai hiện tại (local)**:
 - App đã triển khai đầy đủ luồng offline-first, pull/push sync, retry và background sync.
-- App **chưa** có màn hình login staff và **chưa** đính kèm `Authorization: Bearer <token>` khi gọi API sync.
-
-**Ghi chú upstream**:
-- Trên nhánh upstream (chưa pull về local) có kế hoạch thêm luồng đăng nhập staff bằng email/mật khẩu để lấy JWT, giảm độ phức tạp so với OAuth trên giả lập Android.
+- App đã có màn hình login staff (email/mật khẩu) và **đã** đính kèm `Authorization: Bearer <token>` khi gọi API sync.
 
 ## Luồng chính
 
 Kiến trúc Offline-first chia luồng hoạt động thành 3 giai đoạn tách biệt:
+
+### 2.0: Đăng nhập staff (Email/Password)
+
+**Bối cảnh**: Nhân sự check-in mở app lần đầu trong ngày.
+
+**Các bước:**
+
+- **B1. Nhập thông tin**: Nhân sự nhập email và mật khẩu được cấp.
+- **B2. Gọi API**: App gọi POST /api/auth/login.
+- **B3. Xác thực**: Backend kiểm tra email/mật khẩu và role `CHECKIN_STAFF`.
+- **B4. Lưu token**: App lưu Access Token (AsyncStorage) để dùng cho các API sync tiếp theo.
 
 ### 2.1: Tải dữ liệu đầu ngày (Pre-fetch / Pull Sync)
 
@@ -28,7 +36,7 @@ Kiến trúc Offline-first chia luồng hoạt động thành 3 giai đoạn tá
 - **B2. Fetch Data**: Mobile App gọi API GET /api/sync-data?workshop_id=XYZ.
 
   - Theo thiết kế bảo mật backend, endpoint này yêu cầu role `CHECKIN_STAFF` (JWT).
-  - Ở bản local hiện tại, app chưa tự đính kèm JWT; phần này sẽ được đồng bộ lại khi merge patch login staff từ upstream.
+  - App tự đính kèm Header `Authorization: Bearer <Access_Token>` từ bước 2.0.
 
 - **B3. Xử lý Server**: Backend truy vấn PostgreSQL, trả về danh sách toàn bộ các vé hợp lệ của workshop đó (bao gồm: registration_id, qr_code_hash, workshop_id, checkin_status, checkin_time, full_name).
 
@@ -50,10 +58,6 @@ Kiến trúc Offline-first chia luồng hoạt động thành 3 giai đoạn tá
 
 - **B5. Phản hồi**: Màn hình điện thoại chớp xanh, rung, kết hợp hiển thị full_name lấy từ B3: "Check-in success - [Tên sinh viên]". Thời gian từ lúc đưa QR vào camera đến lúc báo thành công < 1 giây.
 
-### 2.2a: Quét từ ảnh (Fallback)
-
-Khi camera trong app gặp vấn đề, nhân sự có thể chọn ảnh QR từ thư viện. App giải mã QR từ ảnh và xử lý giống bước 2.2. Ảnh không được upload.
-
 ### 2.3: Đồng bộ lên Server (Push Sync)
 
 **Bối cảnh**: Điện thoại của nhân sự nhận lại được sóng 4G/WiFi.
@@ -70,7 +74,7 @@ Khi camera trong app gặp vấn đề, nhân sự có thể chọn ảnh QR t�
 - **B3. Đẩy dữ liệu**: App gọi API PUT /api/registrations/sync đính kèm mảng JSON lên Backend.
 
   - Theo thiết kế bảo mật backend, endpoint này yêu cầu role `CHECKIN_STAFF` (JWT).
-  - Ở bản local hiện tại, app chưa tự đính kèm JWT; phần này sẽ được đồng bộ lại khi merge patch login staff từ upstream.
+  - App tự đính kèm Header `Authorization: Bearer <Access_Token>` từ bước 2.0.
 
 - **B4. Hợp nhất (Merge)**: Backend nhận dữ liệu, cập nhật bảng Registrations trên PostgreSQL.
 
