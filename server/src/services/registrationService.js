@@ -3,6 +3,9 @@ const prisma = require("../config/prisma");
 const redisClient = require("../config/redis");
 const { enqueueNotification } = require("../notifications/notificationQueue");
 const { enqueueHoldExpiry } = require("../queues/registrationHoldQueue");
+const {
+  enqueueRegistrationProcessing,
+} = require("../queues/registrationProcessingQueue");
 
 const LOCK_RETRY_DELAY_MS = Number(
   process.env.REGISTRATION_LOCK_RETRY_MS || 120,
@@ -22,11 +25,16 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function acquireWorkshopLock(lockKey) {
+async function acquireWorkshopLock(lockKey, workshopId) {
   const lockValue = crypto.randomUUID();
   const start = Date.now();
 
   while (Date.now() - start < LOCK_WAIT_MS) {
+    const currentSlots = await getWorkshopSlotsRedis(workshopId);
+    if (currentSlots !== null && currentSlots <= 0) {
+      return { acquired: false, lockValue: null, skipped: true, full: true };
+    }
+
     try {
       const result = await redisClient.set(
         lockKey,
@@ -71,6 +79,97 @@ async function releaseWorkshopLock(lockKey, lockValue) {
       error.message,
     );
     return false;
+  }
+}
+
+/**
+ * Atomically decrement workshop slots using Redis
+ * Returns new slot count after decrement, or null if Redis unavailable
+ */
+async function decrementWorkshopSlotsRedis(workshopId) {
+  try {
+    const slotKey = `slots:workshop:${workshopId}`;
+    const newSlots = await redisClient.decr(slotKey);
+    return newSlots;
+  } catch (error) {
+    console.warn(
+      "[registrationService] Redis decrement failed:",
+      error.message,
+    );
+    return null;
+  }
+}
+
+async function ensureWorkshopSlotsRedis(workshopId, availableSlots) {
+  try {
+    const slotKey = `slots:workshop:${workshopId}`;
+    const initialized = await redisClient.set(
+      slotKey,
+      Math.max(Number(availableSlots) || 0, 0),
+      "NX",
+      "EX",
+      30 * 24 * 60 * 60,
+    );
+    return initialized === "OK";
+  } catch (error) {
+    console.warn(
+      "[registrationService] Redis slot init failed:",
+      error.message,
+    );
+    return false;
+  }
+}
+
+async function getWorkshopSlotsRedis(workshopId) {
+  try {
+    const slotKey = `slots:workshop:${workshopId}`;
+    const value = await redisClient.get(slotKey);
+    if (value === null || value === undefined) {
+      return null;
+    }
+
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  } catch (error) {
+    console.warn(
+      "[registrationService] Redis slot read failed:",
+      error.message,
+    );
+    return null;
+  }
+}
+
+async function setWorkshopSlotsRedis(workshopId, availableSlots) {
+  try {
+    const slotKey = `slots:workshop:${workshopId}`;
+    await redisClient.set(
+      slotKey,
+      Math.max(Number(availableSlots) || 0, 0),
+      "EX",
+      30 * 24 * 60 * 60,
+    );
+    return true;
+  } catch (error) {
+    console.warn(
+      "[registrationService] Redis slot sync failed:",
+      error.message,
+    );
+    return false;
+  }
+}
+
+/**
+ * Atomically increment workshop slots (revert) using Redis
+ */
+async function incrementWorkshopSlotsRedis(workshopId) {
+  try {
+    const slotKey = `slots:workshop:${workshopId}`;
+    await redisClient.incr(slotKey);
+  } catch (error) {
+    console.warn(
+      "[registrationService] Redis increment (revert) failed:",
+      error.message,
+    );
   }
 }
 
@@ -284,10 +383,140 @@ async function registerWorkshop({ userId, workshopId }) {
     throw Object.assign(new Error("Missing workshop_id"), { statusCode: 400 });
   }
 
+  // Step 1: Validate user and workshop exist
+  const [user, workshop] = await Promise.all([
+    prisma.users.findUnique({ where: { id: userId } }),
+    prisma.workshops.findUnique({ where: { id: workshopId } }),
+  ]);
+
+  if (!user) {
+    throw Object.assign(new Error("User not found"), { statusCode: 404 });
+  }
+
+  if (!workshop) {
+    throw Object.assign(new Error("Workshop not found"), {
+      statusCode: 404,
+    });
+  }
+
+  // Step 2: Check for existing registration
+  const existing = await prisma.registrations.findFirst({
+    where: { user_id: userId, workshop_id: workshopId },
+  });
+
+  if (existing) {
+    throw Object.assign(new Error("Registration already exists"), {
+      statusCode: 409,
+    });
+  }
+
+  // Step 3: Generate QR hash immediately
+  const qrHash = crypto.randomUUID();
+  const paymentStatus = workshop.is_paid ? "PENDING" : "PAID";
+
+  // Step 4: Decide strategy based on available slots
+  const EDGE_CASE_THRESHOLD = Number(
+    process.env.REGISTRATION_EDGE_CASE_THRESHOLD || 5,
+  );
+  const currentSlots = workshop.available_slots;
+
+  // === PATH A: OPTIMISTIC (Redis DECR) when slots > threshold ===
+  if (currentSlots > EDGE_CASE_THRESHOLD) {
+    await ensureWorkshopSlotsRedis(workshopId, currentSlots);
+
+    const newSlots = await decrementWorkshopSlotsRedis(workshopId);
+
+    if (newSlots === null) {
+      // Redis unavailable - fallback to pessimistic lock
+      console.warn(
+        "[registrationService] Redis unavailable, falling back to lock",
+      );
+      return await registerWorkshopWithLock({
+        userId,
+        workshopId,
+        user,
+        workshop,
+        qrHash,
+        paymentStatus,
+      });
+    }
+
+    if (newSlots < 0) {
+      // Revert the decrement - workshop is full
+      await incrementWorkshopSlotsRedis(workshopId);
+      throw Object.assign(new Error("Workshop is full"), {
+        statusCode: 409,
+      });
+    }
+
+    // Success! Enqueue for async processing
+    await enqueueRegistrationProcessing({
+      user_id: userId,
+      workshop_id: workshopId,
+      qr_code_hash: qrHash,
+      payment_status: paymentStatus,
+    });
+
+    // Return immediately with 201
+    return {
+      ok: true,
+      registration_id: null, // Will be populated by worker
+      payment_status: paymentStatus,
+      qr_code_hash: qrHash,
+      workshop_id: workshopId,
+      is_paid: Boolean(workshop.is_paid),
+      hold_expires_in_minutes: workshop.is_paid ? HOLD_MINUTES : 0,
+      _note: "Registration queued for processing",
+    };
+  }
+
+  // === PATH B: PESSIMISTIC (Lock) when slots <= threshold ===
+  return await registerWorkshopWithLock({
+    userId,
+    workshopId,
+    user,
+    workshop,
+    qrHash,
+    paymentStatus,
+  });
+}
+
+/**
+ * Register workshop with pessimistic lock (used for edge cases)
+ */
+async function registerWorkshopWithLock({
+  userId,
+  workshopId,
+  user,
+  workshop,
+  qrHash,
+  paymentStatus,
+}) {
   const lockKey = `lock:workshop:${workshopId}`;
-  const lockResult = await acquireWorkshopLock(lockKey);
+  const redisSlots = await getWorkshopSlotsRedis(workshopId);
+
+  if (redisSlots !== null && redisSlots <= 0) {
+    throw Object.assign(new Error("Workshop is full"), {
+      statusCode: 409,
+    });
+  }
+
+  const lockResult = await acquireWorkshopLock(lockKey, workshopId);
+
+  if (lockResult.full) {
+    throw Object.assign(new Error("Workshop is full"), {
+      statusCode: 409,
+    });
+  }
 
   if (!lockResult.acquired && !lockResult.skipped) {
+    const latestSlots = await getWorkshopSlotsRedis(workshopId);
+    if (latestSlots !== null && latestSlots <= 0) {
+      throw Object.assign(new Error("Workshop is full"), {
+        statusCode: 409,
+      });
+    }
+
     throw Object.assign(new Error("System busy. Please try again."), {
       statusCode: 503,
     });
@@ -296,64 +525,59 @@ async function registerWorkshop({ userId, workshopId }) {
   let registrationResult;
 
   try {
-    registrationResult = await prisma.$transaction(async (tx) => {
-      const [user, workshop] = await Promise.all([
-        tx.users.findUnique({ where: { id: userId } }),
-        tx.workshops.findUnique({ where: { id: workshopId } }),
-      ]);
-
-      if (!user) {
-        throw Object.assign(new Error("User not found"), { statusCode: 404 });
-      }
-
-      if (!workshop) {
-        throw Object.assign(new Error("Workshop not found"), {
-          statusCode: 404,
+    registrationResult = await prisma.$transaction(
+      async (tx) => {
+        // Double-check no duplicate registration
+        const existing = await tx.registrations.findFirst({
+          where: { user_id: userId, workshop_id: workshopId },
         });
-      }
 
-      const existing = await tx.registrations.findFirst({
-        where: { user_id: userId, workshop_id: workshopId },
-      });
+        if (existing) {
+          throw Object.assign(new Error("Registration already exists"), {
+            statusCode: 409,
+          });
+        }
 
-      if (existing) {
-        throw Object.assign(new Error("Registration already exists"), {
-          statusCode: 409,
+        // Conditional slot update (atomic in DB)
+        const slotUpdate = await tx.workshops.updateMany({
+          where: { id: workshopId, available_slots: { gt: 0 } },
+          data: { available_slots: { decrement: 1 } },
         });
-      }
 
-      const slotUpdate = await tx.workshops.updateMany({
-        where: { id: workshopId, available_slots: { gt: 0 } },
-        data: { available_slots: { decrement: 1 } },
-      });
+        if (slotUpdate.count === 0) {
+          throw Object.assign(new Error("Workshop is full"), {
+            statusCode: 409,
+          });
+        }
 
-      if (slotUpdate.count === 0) {
-        throw Object.assign(new Error("Workshop is full"), { statusCode: 409 });
-      }
+        await setWorkshopSlotsRedis(workshopId, 0);
 
-      const qrHash = crypto.randomUUID();
-      const paymentStatus = workshop.is_paid ? "PENDING" : "PAID";
+        // Create registration record
+        const registration = await tx.registrations.create({
+          data: {
+            user_id: userId,
+            workshop_id: workshopId,
+            qr_code_hash: qrHash,
+            payment_status: paymentStatus,
+          },
+        });
 
-      const registration = await tx.registrations.create({
-        data: {
-          user_id: userId,
-          workshop_id: workshopId,
-          qr_code_hash: qrHash,
-          payment_status: paymentStatus,
-        },
-      });
-
-      return {
-        user,
-        workshop,
-        registration,
-      };
-    });
+        return { registration };
+      },
+      {
+        maxWait: 10000,
+        timeout: 15000,
+      },
+    );
   } catch (error) {
     if (error.code === "P2002") {
       throw Object.assign(new Error("Registration already exists"), {
         statusCode: 409,
       });
+    }
+
+    if (error.statusCode === 409) {
+      await setWorkshopSlotsRedis(workshopId, 0);
     }
 
     throw error;
@@ -363,8 +587,9 @@ async function registerWorkshop({ userId, workshopId }) {
     }
   }
 
-  const { user, workshop, registration } = registrationResult;
+  const { registration } = registrationResult;
 
+  // Enqueue notifications and hold expiry for edge-case path
   if (!workshop.is_paid) {
     await enqueueNotification({
       user_email: user.email,
@@ -374,7 +599,6 @@ async function registerWorkshop({ userId, workshopId }) {
     });
   }
 
-  // For paid workshops, schedule hold expiry (unpaid registrations auto-cancel after timeout)
   if (workshop.is_paid) {
     const delayMs = Math.max(HOLD_MINUTES, 1) * 60 * 1000;
     await enqueueHoldExpiry(

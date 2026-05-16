@@ -114,7 +114,7 @@ Gọi API /api/auth/login với email/mật khẩu hợp lệ của staff. Serve
 
 ### Test Case 2 (RBAC Security)
 
-Dùng Access Token có role STUDENT gọi API DELETE /api/workshops/1. Server trả về chính xác mã lỗi 403 Forbidden (Không có quyền truy cập).
+Dùng Access Token có role STUDENT gọi API DELETE /api/workshops/1. Server trả về chính xác mã lỗi 403 Forbidden (Không có quyền truy cập). Test bằng PostMan trước lúc hoàn thiện.
 
 ### Test Case 3 (Token Expiration)
 
@@ -122,4 +122,4 @@ Dùng Access Token có role STUDENT gọi API DELETE /api/workshops/1. Server tr
 
 ### Test Case 4 (Refresh Mechanism)
 
-Gọi API refresh-token với cookie hợp lệ. Server cấp Access Token mới. Gọi lại API bằng token mới, server trả về dữ liệu bình thường.
+Gọi API refresh-token với cookie hợp lệ. Server cấp Access Token mới. Gọi lại API bằng token mới, server trả về dữ liệu bình thường. Thực hiện bằng cách sử dụng Web bình thường, không cần phải test riêng.

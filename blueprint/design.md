@@ -111,14 +111,14 @@ graph LR
     %% 2. Cụm Server
     subgraph Server ["Cụm Server (Realtime)"]
         Gateway["Node.js Core API"]:::api
-        RedisRateLimit[("Redis<br/>Rate Limit và Lock")]:::db
-        PostgresDB[("PostgreSQL<br/>Primary DB")]:::db
+        RedisCounter[("Redis<br/>Rate Limit & Atomic Counter")]:::db
+        RedisQueue[("Redis<br/>Message Queue (BullMQ)")]:::db
     end
 
     %% 3. Cụm Background
     subgraph Background ["Cụm Background (Chạy ngầm)"]
-        RedisQueue[("Redis<br/>Message Queue")]:::db
-        WorkerNode["Node.js Worker"]:::worker
+        WorkerNode["Node.js Worker<br/>(Registration, Hold, Notification)"]:::worker
+        PostgresDB[("PostgreSQL<br/>Primary DB")]:::db
         External["Các hệ thống ngoài<br/>Payment AI Email"]:::client
         CSV["File CSV sinh viên<br/>Legacy System"]:::db
     end
@@ -128,15 +128,15 @@ graph LR
     MobileExpo <-->|1 Sync Offline Data| Gateway
 
     %% Luồng 2: Xử lý tại Server
-    Gateway -->|2 Check Limit và Lấy Lock| RedisRateLimit
-    Gateway -->|3 Read và Write dữ liệu| PostgresDB
-    Gateway -->|4 Push Task vào hàng đợi| RedisQueue
+    Gateway -->|2 Check Limit và Trừ vé DECR| RedisCounter
+    Gateway -->|3 Hợp lệ -> Push Task vào hàng đợi| RedisQueue
+    Gateway -.->|4 Trả về 201 Created| React
 
     %% Luồng 3: Xử lý ngầm
-    RedisQueue -->|5 Lấy Task ra xử lý| WorkerNode
-    WorkerNode -->|6 Gọi API bất đồng bộ| External
-    WorkerNode -.->|7 Cronjob đọc mỗi đêm| CSV
-    WorkerNode -->|8 Cập nhật lại DB| PostgresDB
+    RedisQueue -->|5 Lấy Task ra xử lý tuần tự| WorkerNode
+    WorkerNode -->|6 Ghi dữ liệu & Trừ slot thật| PostgresDB
+    WorkerNode -->|7 Giao tiếp external| External
+    WorkerNode -.->|8 Cronjob đọc mỗi đêm| CSV
 ```
 
 ## Thiết kế cơ sở dữ liệu
@@ -169,8 +169,11 @@ Hệ thống sử dụng mô hình RBAC (Role-Based Access Control) kết hợp 
 
 ### Kiểm soát tải đột biến
 
-- Giải pháp: Sử dụng thuật toán Token Bucket thực thi trên Redis.
-- Cách hoạt động: Giới hạn mỗi User/IP chỉ được phép gửi tối đa 30 requests / phút. Nếu vượt quá (ví dụ bot spam hoặc user bấm F5 liên tục), API Gateway chặn ngay lập tức và trả về HTTP Status 429 Too Many Requests.
+- Giải pháp: Giải pháp: Kết hợp Global/Per-User Rate Limiting (Token Bucket), Redis Atomic Counter và Message Queue (BullMQ).
+- Cách hoạt động:
+  - **Lớp bảo vệ 1 (Rate Limit):** Giới hạn tần suất request ở mức API Gateway (trả về 429 nếu vượt ngưỡng).
+  - **Lớp bảo vệ 2 (Bộ đệm RAM):** Số lượng chỗ trống (available_slots) được đồng bộ lên Redis khi tạo/sửa workshop. Khi 12.000 sinh viên thao tác cùng lúc, API sẽ gọi lệnh `DECR` nguyên tử trên Redis để trừ vé. Do Redis lưu trên RAM và là đơn luồng, nó chịu tải hàng chục ngàn thao tác mỗi giây mà không xảy ra Race Condition.
+  - **Lớp bảo vệ 3 (Message Queue):** Sau khi giành vé thành công trên Redis, request được đưa vào hàng đợi `REGISTRATION_PROCESSING_QUEUE` và API trả về `201 Created` ngay lập tức. Một Node.js Worker chạy ngầm sẽ lấy từng request ra để ghi dữ liệu (Persist) vào PostgreSQL. Cơ chế này ngăn chặn tình trạng thắt cổ chai (Bottleneck) hay sập Database (Deadlock/Connection Limit) do phải ghi quá nhiều dữ liệu cùng lúc.
 - Bổ trợ: Với 12.000 sinh viên truy cập đồng thời, giao diện “Xem lịch workshop” sẽ được Cache thẳng trên Redis. API sẽ trả về dữ liệu từ RAM thay vì xuống PostgreSQL, giúp hệ thống không bị crash ở những phút đầu tiên.
 
 ### Xử lý cổng thanh toán không ổn định

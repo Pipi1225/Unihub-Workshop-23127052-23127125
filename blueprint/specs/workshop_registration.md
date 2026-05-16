@@ -10,34 +10,30 @@ Tính năng này phải giải quyết bài toán "tranh chấp chỗ ngồi" (C
 
 **Bối cảnh (Context)**: Sinh viên đã đăng nhập thành công vào hệ thống, đang ở trang chi tiết của một workshop và quyết định bấm nút đăng ký. Lượng truy cập lúc này có thể đang ở mức đỉnh điểm (Peak load).
 
+Hệ thống áp dụng cơ chế **Luồng Đăng ký Lai (Hybrid Flow)**. Khi số lượng vé trống còn dồi dào, hệ thống dùng luồng Nhanh (Fast Path - Async). Khi lượng vé chạm ngưỡng rủi ro (Ví dụ: ≤ 5 vé cuối cùng), hệ thống chuyển sang luồng Chậm (Pessimistic Path - Sync) để kiểm soát tuyệt đối bằng Database.
+
 **Các bước xử lý chi tiết (Flow):**
 
-- **B1. Giao diện (Frontend Trigger)**: Sinh viên nhấn nút "Tham gia". Frontend hiển thị trạng thái loading (disable nút để tránh click đúp) và gửi một request POST đến endpoint /api/registrations kèm theo workshop_id.
+- **B1. Giao diện (Frontend Trigger)**: Sinh viên nhấn nút "Tham gia". Frontend gửi request POST đến endpoint `/api/registrations`.
+- **B2. Trích xuất định danh (Authentication)**: Backend giải mã JWT Token, lấy `user_id` để ngăn chặn giả mạo request.
+- **B3. Kiểm soát tải (Rate Limiting)**: Đi qua bộ lọc Token Bucket trên Redis (Per-User và Global Limit). Trả về 429 nếu vi phạm.
+- **B4. Đánh giá chiến lược (Strategy Decision)**: Backend kiểm tra số lượng `available_slots` của workshop.
 
-- **B2. Xác thực & Trích xuất định danh (Authentication)**: Backend nhận request. Middleware sẽ giải mã JWT Token nằm trong Header. Nếu hợp lệ, hệ thống trích xuất user_id và kiểm tra quyền (role === 'STUDENT'). Việc lấy user_id từ Token đảm bảo tính bảo mật, ngăn chặn việc user A cố tình gửi payload để đăng ký hộ/phá hoại user B.
+**Luồng Nhanh (Optimistic / Async Path) - Kích hoạt khi slots > EDGE_CASE_THRESHOLD:**
 
-- **B3. Kiểm soát tải (Rate Limiting)**: Trước khi chạm vào logic Database, request phải đi qua bộ lọc của Redis. Hệ thống đếm số lượng request của user_id (hoặc IP) trong 1 phút qua. Nếu dưới ngưỡng (ví dụ < 30 req/phút), request được cho phép đi tiếp.
+- **B5a. Trừ chỗ trên RAM (Atomic Update)**: API gọi lệnh `DECR` nguyên tử để trừ số lượng chỗ trống lưu trữ trên Redis. Nếu kết quả sau khi trừ `< 0`, lập tức cộng trả lại (revert) và báo lỗi 409 (Hết vé).
+- **B6a. Đẩy hàng đợi (Enqueue)**: Nếu giành chỗ trên Redis thành công, API khởi tạo mã QR Hash và đẩy thông điệp gồm (`user_id`, `workshop_id`, `qr_code_hash`) vào hàng đợi `REGISTRATION_PROCESSING_QUEUE`.
+- **B7a. Phản hồi nhanh (Fast Response)**: API trả về HTTP `201 Created` ngay lập tức để giải phóng kết nối cho user.
+- **B8a. Xử lý ngầm (Background Worker)**: Node.js Worker tuần tự lấy job từ queue, thực hiện giao dịch (Transaction) ghi vào PostgreSQL và kiểm tra trùng lặp (Idempotent Retry Protection). Nếu user được ghi thành công, Worker tiếp tục đưa tác vụ gửi email hoặc đếm ngược giữ chỗ thanh toán (Hold Expiry) vào các hàng đợi tương ứng.
 
-- **B4. Thiết lập Khóa phân tán (Distributed Lock)**: Để chống tranh chấp (Race Condition), Backend yêu cầu Redis cấp một khóa độc quyền (Lock) cho workshop_id này (Ví dụ: key là lock:workshop:123).
-  - Chỉ request nào lấy được Lock mới được đi tiếp xuống Database.
-  - Các request đến cùng lúc cho cùng workshop này sẽ phải đứng chờ (sleep/retry) trong vòng vài trăm mili-giây cho đến khi Lock được mở, hoặc bị timeout nếu chờ quá lâu.
+**Luồng Chặn (Pessimistic / Sync Path) - Kích hoạt khi slots <= EDGE_CASE_THRESHOLD hoặc Redis sự cố:**
 
-- **B5. Kiểm tra điều kiện (Validation)**: Request lấy được Lock sẽ mở một Database Transaction (phiên giao dịch) trên PostgreSQL và thực hiện các kiểm tra:
-  - Truy vấn xem bản ghi user_id và workshop_id này đã tồn tại trong bảng Registrations chưa (Chống đăng ký trùng).
-  - Kiểm tra và trừ slot bằng thao tác cập nhật có điều kiện (`UPDATE ... WHERE available_slots > 0`) trong transaction để đảm bảo không overbook ngay cả khi có tranh chấp.
+- **B5b. Khóa phân tán (Distributed Lock)**: Backend yêu cầu Redis cấp một khóa độc quyền (`lock:workshop:id`). Các request đến cùng lúc phải chờ (sleep).
+- **B6b. Giao dịch đồng bộ (Database Transaction)**: Request giữ Lock sẽ kiểm tra trùng lặp và trừ số chỗ trực tiếp trên PostgreSQL bằng truy vấn cập nhật có điều kiện (`UPDATE ... WHERE available_slots > 0`).
+- **B7b. Cập nhật Bộ đệm**: Nếu thành công, ghi đè lại giá trị slot bằng 0 lên Redis.
+- **B8b. Phản hồi**: Trả về kết quả cho Frontend sau khi dữ liệu đã ghi xong xuống Database.
 
-- **B6. Thực thi Giao dịch (Execute Transaction)**: Backend trừ số lượng chỗ: `UPDATE Workshops SET available_slots = available_slots - 1`.
-  - Khởi tạo chuỗi mã hóa (Hash) duy nhất bằng UUID v4 để làm vé QR.
-  - Tạo bản ghi mới trong bảng Registrations. Trạng thái thanh toán (payment_status) sẽ tự động gán là PAID nếu workshop miễn phí, hoặc PENDING nếu có thu phí.
-  - Commit Transaction lưu dữ liệu vĩnh viễn vào ổ cứng.
-
-- **B7. Giải phóng tài nguyên (Release Lock)**: Lập tức xóa Lock trong Redis (DEL lock:workshop:123) để nhường đường cho request của các sinh viên khác đang chờ.
-
-- **B8. Xử lý nền (Background Job)**: (Dành cho workshop miễn phí) Backend đẩy một thông điệp chứa registration_id vào Redis Message Queue. Một Worker chạy ngầm sẽ gắp thông điệp này ra và tiến hành gọi API gửi email nhả vé QR cho sinh viên.
-
-- **B9. Phản hồi (Response)**: Backend trả về HTTP Status 200 OK (hoặc 201 Created). Frontend tắt loading và chuyển hướng sinh viên sang trang "Vé của tôi" (nếu miễn phí) hoặc trang "Thanh toán" (nếu có phí).
-
-- **B10. Khởi tạo bộ đếm thời gian giữ chỗ (Hold Timeout - Dành cho vé có phí)**: Nếu là workshop có phí, Backend sẽ lên lịch một tác vụ ngầm (Delayed Job bằng Redis BullMQ) theo biến `PAID_HOLD_MINUTES` (mặc định hiện tại: 10 phút). Nếu quá thời gian mà vé vẫn ở trạng thái PENDING, hệ thống sẽ tự động hủy vé (status = CANCELLED) và hoàn trả lại số lượng chỗ (UPDATE Workshops SET available_slots = available_slots + 1).
+- **B9. Khởi tạo bộ đếm thời gian giữ chỗ (Hold Timeout - Dành cho vé có phí)**: Nếu là workshop có phí, một Delayed Job sẽ kích hoạt đếm ngược (Mặc định: 10 phút). Nếu thanh toán thất bại, hệ thống tự động hủy vé và hoàn trả slot vào Database.
 
 ## Kịch bản lỗi
 
@@ -57,7 +53,7 @@ Tính năng này phải giải quyết bài toán "tranh chấp chỗ ngồi" (C
 
 **Trigger**: Chỉ còn 1 slot, nhưng Sinh viên A và B bấm cùng lúc. A lấy được Redis Lock trước. B đứng chờ. Khi A xử lý xong, số slot về 0. Lúc này B mới lấy được Lock và đi vào truy vấn DB.
 
-**Xử lý**: Ở bước kiểm tra điều kiện (Bước 5), DB xác nhận available_slots === 0. Giao dịch của B bị hủy (Rollback). Nhả Lock. Trả về mã lỗi 400 Bad Request hoặc 409 Conflict. Frontend báo: "Rất tiếc, sự kiện vừa hết chỗ. Vui lòng chọn sự kiện khác."
+**Xử lý**: Khi thực hiện lệnh DECR trên Redis Counter, kết quả trả về < 0. Giao dịch của B bị hủy (Rollback). Nhả Lock. Trả về mã lỗi 400 Bad Request hoặc 409 Conflict. Frontend báo: "Rất tiếc, sự kiện vừa hết chỗ. Vui lòng chọn sự kiện khác."
 
 ### 3.4. Quá thời gian chờ Khóa (Lock Timeout)
 
@@ -99,18 +95,26 @@ Backend tuyệt đối không lấy user_id từ req.body do client gửi lên (
 
 ## Tiêu chí chấp nhận
 
-### Test Case 1
+### Test Case 1 (Duplicate Registration - Single User)
 
-Gửi 100 HTTP request đồng thời (Concurrent requests) bằng JMeter/K6 vào một workshop chỉ còn đúng 1 slot trống. Hệ thống chỉ cho phép đúng 1 request trả về status `200 OK`, 99 request còn lại phải trả về `409 Conflict`.
+Gửi 100 HTTP request đồng thời từ **cùng 1 tài khoản user** (1 JWT) vào một workshop. Hệ thống phải đảm bảo request đầu tiên: status `201 Created` (đăng ký thành công). 99 request còn lại: status `409 Conflict` với message "Bạn đã đăng ký sự kiện này rồi" (duplicate detection)
 
-### Test Case 2
+### Test Case 2 (Race Condition - Multiple Users)
 
-Sinh viên cố tình gửi 2 request đăng ký cùng một `workshop_id` cho chính mình. Request thứ 2 phải bị từ chối với thông báo "Bạn đã đăng ký sự kiện này".
+Gửi 100 HTTP request đồng thời từ **100 user khác nhau** (100 JWT khác nhau) vào một workshop chỉ còn **1 slot duy nhất**. Hệ thống phải đảm bảo:
 
-### Test Case 3
+- Chỉ **1 user** được đăng ký thành công → status `201 Created`
+- **99 user còn lại** nhận `409 Conflict` vì **hết chỗ** (workshop full), **không phải** duplicate
+- **0 duplicate error** (mỗi user là unique)
 
-User đăng nhập với tài khoản có role `ORGANIZER` gọi API đăng ký. Hệ thống trả về `403 Forbidden`.
+### Test Case 3 (Sequential Duplicate Detection)
 
-### Test Case 4
+Sinh viên cố tình gửi 2 request đăng ký cùng một `workshop_id` cho chính mình (hoặc qua manual Postman call). Request thứ 2 phải bị từ chối với thông báo "Bạn đã đăng ký sự kiện này" và status `409 Conflict`.
+
+### Test Case 4 (RBAC - Organizer Cannot Register)
+
+User đăng nhập với tài khoản có role `ORGANIZER` gọi API đăng ký. Hệ thống trả về `403 Forbidden`. Test bằng PostMan trước lúc hoàn thiện.
+
+### Test Case 5
 
 Sinh viên A đăng ký thành công workshop có phí (còn đúng 1 slot cuối), nhưng không thanh toán. Sinh viên B vào sau thấy báo "Hết chỗ". Sau `PAID_HOLD_MINUTES` (mặc định local: 10 phút), hệ thống hủy vé của A. Sinh viên B f5 lại trang, thấy còn 1 slot trống và có thể đăng ký thành công.

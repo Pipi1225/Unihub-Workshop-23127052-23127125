@@ -1,5 +1,6 @@
 const fsp = require("fs/promises");
 const prisma = require("../config/prisma");
+const redisClient = require("../config/redis");
 const createSupabaseClient = require("../config/supabase");
 const { enqueueWorkshopSummary } = require("../queues/workshopSummaryQueue");
 const { buildPdfPublicUrl } = require("../middlewares/uploadPdf");
@@ -354,6 +355,19 @@ async function createWorkshop({ payload, file, roomMapFile }) {
     },
   });
 
+  // Initialize Redis slot counter for high-concurrency registration handling
+  try {
+    const slotKey = `slots:workshop:${workshop.id}`;
+    await redisClient.set(slotKey, data.total_slots);
+    // Set expiry to 30 days (in case workshop becomes inactive)
+    await redisClient.expire(slotKey, 30 * 24 * 60 * 60);
+  } catch (error) {
+    console.warn(
+      "[workshopService] Failed to initialize Redis slots counter:",
+      error.message,
+    );
+  }
+
   await invalidateWorkshopsCache();
 
   if (file) {
@@ -452,6 +466,22 @@ async function updateWorkshop({ workshopId, payload, file, roomMapFile }) {
       data: updates,
     });
   });
+
+  // Update Redis slot counter if available_slots changed
+  if (
+    payload.total_slots !== undefined ||
+    payload.available_slots !== undefined
+  ) {
+    try {
+      const slotKey = `slots:workshop:${workshopId}`;
+      await redisClient.set(slotKey, workshop.available_slots);
+    } catch (error) {
+      console.warn(
+        "[workshopService] Failed to update Redis slots counter:",
+        error.message,
+      );
+    }
+  }
 
   await invalidateWorkshopsCache();
 
