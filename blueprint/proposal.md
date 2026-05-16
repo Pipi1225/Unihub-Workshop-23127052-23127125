@@ -58,7 +58,7 @@ Hệ thống phục vụ 3 nhóm người dùng cốt lõi:
 Hệ thống được thiết kế dưới giả định phải đối mặt với các tình huống sau:
 
 - Tranh chấp tài nguyên (Concurrency): Rủi ro hàng trăm request cùng ghi đè lên một bản ghi giới hạn chỗ ngồi.
-  - Ràng buộc: Phải có cơ chế lock ở tầng Database hoặc Caching.
+  - Ràng buộc: Áp dụng cơ chế trừ chỗ bằng Atomic Counter trên bộ nhớ đệm (In-memory Database) kết hợp hàng đợi xử lý bất đồng bộ để đảm bảo tốc độ và tính toàn vẹn dữ liệu, thay vì dùng Database Lock truyền thống dễ gây nghẽn cổ chai.
 - Tấn công hoặc quá tải lưu lượng: Rủi ro backend sập do 12000 request.
   - Ràng buộc: Phải giới hạn tần suất request (Rate Limiting) ở gateway và phân luồng xử lý bất đồng bộ (Queue) cho các tác vụ nặng.
 - Hệ thống bên thứ 3 bất ổn: Cổng thanh toán có thể timeout, không trả về kết quả.

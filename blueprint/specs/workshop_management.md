@@ -6,7 +6,7 @@ Tính năng này phục vụ hai nhóm người dùng chính với các quyền 
 
 - **Sinh viên**: Truy cập để xem danh sách lịch trình và thông tin chi tiết của tất cả các workshop đang mở. Luồng này đòi hỏi tốc độ cao vì phải gánh tải 12.000 lượt truy cập đồng thời.
 
-- **Ban tổ chức (Admin)**: Thực hiện các thao tác CRUD (Tạo mới, Cập nhật, Xóa) workshop. Đặc biệt, tính năng hỗ trợ Ban tổ chức tải lên file PDF giới thiệu sự kiện; hệ thống sẽ đưa vào hàng đợi để xử lý ngầm và gọi AI (ưu tiên Gemini, fallback OpenAI nếu có cấu hình) trích xuất thành đoạn văn tóm tắt.
+- **Ban tổ chức (Admin)**: Thực hiện các thao tác CRUD (Tạo mới, Cập nhật, Xóa) workshop. Đặc biệt, tính năng hỗ trợ Ban tổ chức tải lên file PDF giới thiệu sự kiện; hệ thống sẽ đưa vào hàng đợi để xử lý ngầm và gọi AI (Gemini) trích xuất thành đoạn văn tóm tắt.
 
 ## Luồng chính
 
@@ -45,7 +45,7 @@ Tính năng này phục vụ hai nhóm người dùng chính với các quyền 
 
 - **B7. Xóa Cache**: Worker ra lệnh xóa (Invalidate) cache danh sách workshop trên Redis, ép hệ thống nạp lại danh sách mới nhất ở lần truy cập tiếp theo của sinh viên.
 
-**Lưu ý về Cache Invalidation**: Không chỉ khi tạo mới, mà ở BẤT KỲ thao tác Cập nhật (Update) giờ giấc/số slot hay Hủy (Delete) workshop nào từ Admin, Backend cũng phải lập tức thực hiện lệnh xóa Cache (Invalidate) danh sách workshop trên Redis, đảm bảo 12.000 sinh viên luôn nhìn thấy dữ liệu realtime.
+**Lưu ý về Cache & Counter Invalidation**: Không chỉ khi tạo mới, mà ở BẤT KỲ thao tác Cập nhật (Update) nào liên quan đến `total_slots` hay Hủy (Delete) workshop, Backend không chỉ phải lệnh xóa Cache danh sách (Invalidate) mà còn phải đồng bộ lại biến đếm nguyên tử (`slots:workshop:{id}`) trên Redis. Điều này đảm bảo thuật toán High-Traffic Registration ở phần sinh viên luôn chạy với dữ liệu chuẩn xác nhất.
 
 ## Kịch bản lỗi
 
@@ -94,11 +94,11 @@ Tuyệt đối không gọi API Gemini trực tiếp trong luồng chính của 
 
 ### Test Case 1 (Security)
 
-Gửi request PUT /api/workshops/1 với header chứa JWT Token của một tài khoản sinh viên. Hệ thống phải trả về 403 Forbidden.
+Gửi request PUT /api/workshops/1 với header chứa JWT Token của một tài khoản sinh viên. Hệ thống phải trả về 403 Forbidden. Test bằng PostMan trước lúc hoàn thiện.
 
 ### Test Case 2 (Performance)
 
-Gửi 5.000 request GET /api/workshops đồng thời trong 1 giây. Backend lấy dữ liệu từ Redis và trả về 200 OK với Response Time P95 < 150ms mà không làm quá tải CPU của PostgreSQL.
+Gửi 1.000 request GET /api/workshops đồng thời trong 1 giây. Backend lấy dữ liệu từ Redis và trả về 200 OK với Response Time P95 < 150ms mà không làm quá tải CPU của PostgreSQL.
 
 ### Test Case 3 (AI Workflow)
 

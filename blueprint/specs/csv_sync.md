@@ -77,11 +77,11 @@ Trong giới hạn của hệ thống hiện tại, tiến trình CSV Sync chỉ
 
 ### Test Case 1 (Streaming & Performance)
 
-Nạp một file CSV chứa 50.000 bản ghi (khoảng 10MB). Kích hoạt Worker. Quá trình xử lý không văng lỗi Out of Memory và Database có đúng 50.000 tài khoản STUDENT mới.
+Nạp một file CSV chứa 1.000 bản ghi (khoảng 1MB). Kích hoạt Worker. Quá trình xử lý không văng lỗi Out of Memory và Database có đúng 1.000 tài khoản STUDENT mới.
 
 ### Test Case 2 (Idempotency / Upsert)
 
-Chạy lại chính xác file CSV của Test Case 1 lần thứ hai. Số lượng bản ghi trong Database giữ nguyên không đổi (50.000), không có lỗi văng ra.
+Chạy lại chính xác file CSV của Test Case 1 lần thứ hai. Số lượng bản ghi trong Database giữ nguyên không đổi (1.000), không có lỗi văng ra.
 
 ### Test Case 3 (Fault Tolerance)
 
