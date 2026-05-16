@@ -4,7 +4,7 @@
   "main": "index.js",
   "scripts": {
     "dev": "nodemon src/server.js",
-    "dev:all": "concurrently \"npm:dev\" \"npm:worker:notification\" \"npm:worker:registration\" \"npm:worker:registration:processing\" \"npm:worker:payment\" \"npm:worker:workshop\" \"npm:csv:sync\" \"npm:notification:enqueue\"",
+    "dev:all": "concurrently \"npm:dev\" \"npm:worker:notification\" \"npm:worker:registration\" \"npm:worker:registration:processing\" \"npm:worker:payment\" \"npm:worker:workshop\"",
     "csv:sync": "node src/scripts/runCsvSyncOnce.js",
     "worker:notification": "nodemon src/workers/notificationWorker.js",
     "worker:registration": "nodemon src/workers/registrationWorker.js",
@@ -22,6 +22,7 @@
     "@prisma/client": "^7.8.0",
     "@supabase/supabase-js": "^2.104.1",
     "bullmq": "^5.76.2",
+    "bcryptjs": "^2.4.3",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "csv-parser": "^3.2.0",

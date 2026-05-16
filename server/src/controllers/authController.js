@@ -26,6 +26,22 @@ async function googleLogin(req, res) {
   });
 }
 
+async function passwordLogin(req, res) {
+  const { email, password } = req.body || {};
+  const result = await authService.loginWithPassword(email, password);
+
+  res.cookie("refresh_token", result.refreshToken.token, {
+    ...getCookieOptions(),
+    expires: result.refreshToken.expiresAt,
+  });
+
+  res.status(200).json({
+    ok: true,
+    access_token: result.accessToken,
+    user: result.user,
+  });
+}
+
 async function refreshToken(req, res) {
   const refreshTokenValue = req.cookies?.refresh_token;
   const result = await authService.refreshAccessToken(refreshTokenValue);
@@ -50,6 +66,7 @@ async function logout(req, res) {
 
 module.exports = {
   googleLogin,
+  passwordLogin,
   refreshToken,
   logout,
 };

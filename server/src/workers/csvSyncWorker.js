@@ -4,7 +4,7 @@ const path = require("path");
 const IORedis = require("ioredis");
 const { Queue, Worker, JobScheduler } = require("bullmq");
 const prisma = require("../config/prisma");
-const { runCsvSync, resolveStudentEmailDomain } = require("../services/csvSyncService");
+const { runCsvSync, resolveStudentEmailDomains } = require("../services/csvSyncService");
 
 const queueName = "csv-sync";
 const jobName = "sync-students-csv";
@@ -39,7 +39,7 @@ const worker = new Worker(
 			importDir,
 			archiveDir,
 			errorDir,
-			studentEmailDomain: resolveStudentEmailDomain(),
+			studentEmailDomains: resolveStudentEmailDomains(),
 			batchSize,
 			batchDelayMs,
 			logger: console,
@@ -67,7 +67,7 @@ async function bootstrap() {
 	});
 
 	console.log(`CSV sync worker is running. Cron: ${repeatPattern}`);
-	console.log(`Student domain: ${resolveStudentEmailDomain()}`);
+	console.log(`Student domains: ${resolveStudentEmailDomains().join(", ")}`);
 	console.log(`Import dir: ${importDir}`);
 	console.log(`Archive dir: ${archiveDir}`);
 	console.log(`Error dir: ${errorDir}`);

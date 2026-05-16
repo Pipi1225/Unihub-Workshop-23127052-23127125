@@ -8,14 +8,22 @@ Tính năng này dành riêng cho nhân sự vận hành tại cửa sự kiện
 
 **Trạng thái triển khai hiện tại (local)**:
 - App đã triển khai đầy đủ luồng offline-first, pull/push sync, retry và background sync.
-- App **chưa** có màn hình login staff và **chưa** đính kèm `Authorization: Bearer <token>` khi gọi API sync.
-
-**Ghi chú upstream**:
-- Trên nhánh upstream (chưa pull về local) có kế hoạch thêm luồng đăng nhập staff bằng email/mật khẩu để lấy JWT, giảm độ phức tạp so với OAuth trên giả lập Android.
+- App đã có màn hình login staff (email/mật khẩu) và **đã** đính kèm `Authorization: Bearer <token>` khi gọi API sync.
 
 ## Luồng chính
 
 Kiến trúc Offline-first chia luồng hoạt động thành 3 giai đoạn tách biệt:
+
+### 2.0: Đăng nhập staff (Email/Password)
+
+**Bối cảnh**: Nhân sự check-in mở app lần đầu trong ngày.
+
+**Các bước:**
+
+- **B1. Nhập thông tin**: Nhân sự nhập email và mật khẩu được cấp.
+- **B2. Gọi API**: App gọi POST /api/auth/login.
+- **B3. Xác thực**: Backend kiểm tra email/mật khẩu và role `CHECKIN_STAFF`.
+- **B4. Lưu token**: App lưu Access Token (AsyncStorage) để dùng cho các API sync tiếp theo.
 
 ### 2.1: Tải dữ liệu đầu ngày (Pre-fetch / Pull Sync)
 
@@ -28,7 +36,7 @@ Kiến trúc Offline-first chia luồng hoạt động thành 3 giai đoạn tá
 - **B2. Fetch Data**: Mobile App gọi API GET /api/sync-data?workshop_id=XYZ.
 
   - Theo thiết kế bảo mật backend, endpoint này yêu cầu role `CHECKIN_STAFF` (JWT).
-  - Ở bản local hiện tại, app chưa tự đính kèm JWT; phần này sẽ được đồng bộ lại khi merge patch login staff từ upstream.
+  - App tự đính kèm Header `Authorization: Bearer <Access_Token>` từ bước 2.0.
 
 - **B3. Xử lý Server**: Backend truy vấn PostgreSQL, trả về danh sách toàn bộ các vé hợp lệ của workshop đó (bao gồm: registration_id, qr_code_hash, workshop_id, checkin_status, checkin_time, full_name).
 
@@ -50,10 +58,6 @@ Kiến trúc Offline-first chia luồng hoạt động thành 3 giai đoạn tá
 
 - **B5. Phản hồi**: Màn hình điện thoại chớp xanh, rung, kết hợp hiển thị full_name lấy từ B3: "Check-in success - [Tên sinh viên]". Thời gian từ lúc đưa QR vào camera đến lúc báo thành công < 1 giây.
 
-### 2.2a: Quét từ ảnh (Fallback)
-
-Khi camera trong app gặp vấn đề, nhân sự có thể chọn ảnh QR từ thư viện. App giải mã QR từ ảnh và xử lý giống bước 2.2. Ảnh không được upload.
-
 ### 2.3: Đồng bộ lên Server (Push Sync)
 
 **Bối cảnh**: Điện thoại của nhân sự nhận lại được sóng 4G/WiFi.
@@ -70,7 +74,7 @@ Khi camera trong app gặp vấn đề, nhân sự có thể chọn ảnh QR t�
 - **B3. Đẩy dữ liệu**: App gọi API PUT /api/registrations/sync đính kèm mảng JSON lên Backend.
 
   - Theo thiết kế bảo mật backend, endpoint này yêu cầu role `CHECKIN_STAFF` (JWT).
-  - Ở bản local hiện tại, app chưa tự đính kèm JWT; phần này sẽ được đồng bộ lại khi merge patch login staff từ upstream.
+  - App tự đính kèm Header `Authorization: Bearer <Access_Token>` từ bước 2.0.
 
 - **B4. Hợp nhất (Merge)**: Backend nhận dữ liệu, cập nhật bảng Registrations trên PostgreSQL.
 
@@ -121,16 +125,28 @@ Khi đang ở trạng thái Offline, Local SQLite trên thiết bị là Nguồn
 
 ## Tiêu chí chấp nhận
 
-### Test Case 1 (Offline Mode)
+### Test Case 1 (Authentication - Non-existent Account)
+
+Tại màn hình đăng nhập của ứng dụng, nhập thông tin tài khoản (username/email và password) không tồn tại trong hệ thống (Database). Nhấn nút đăng nhập. Hệ thống từ chối truy cập, giữ nguyên ở màn hình đăng nhập, hiển thị thông báo lỗi.
+
+### Test Case 2 (Authorization - Invalid Role)
+
+Tại màn hình đăng nhập, nhập thông tin của một tài khoản hợp lệ (có tồn tại trong Database) nhưng được gán ROLE không phải là `CHECKIN_STAFF` (VD: `STUDENT`). Nhấn nút đăng nhập. Hệ thống từ chối cấp quyền thực hiện điểm danh, hiển thị thông báo không đủ thẩm quyền và giữ nguyên ở màn hình đăng nhập.
+
+### Test Case 3 (Offline Mode)
 
 Mở app, tải dữ liệu sự kiện (sau khi đã có dữ liệu local hợp lệ). Sau đó TẮT hoàn toàn WiFi/4G (chuyển sang Airplane mode). Thực hiện quét 1 mã QR hợp lệ. Giao diện báo thành công. Đóng app, mở lại, số liệu điểm danh cục bộ vẫn được giữ nguyên.
 
-### Test Case 2 (Sync Behavior)
+### Test Case 4 (Duplicate Scan - Already Checked-in)
 
-Bật WiFi trở lại cho thiết bị ở Test Case 1. Nếu ứng dụng đang được mở (Foreground), trong vòng 1 phút kiểm tra Database PostgreSQL trên Server, trạng thái vé của sinh viên đó phải chuyển thành checkin_status = true.
+Dùng thiết bị quét lại chính mã QR hợp lệ đã được quét thành công ở Test Case 3. Hệ thống nhận diện được dữ liệu trùng lặp, không báo "Thành công" như lần đầu. Giao diện hiển thị cảnh báo kèm thông tin chi tiết: Sinh viên đã check-in thành công trước đó vào thời gian cụ thể. Số lượng điểm danh tổng (Phần Checked In) không bị cộng dồn thêm.
+
+### Test Case 5 (Sync Behavior)
+
+Bật WiFi trở lại cho thiết bị ở Test Case 3. Nếu ứng dụng đang được mở (Foreground), trong vòng 1 phút kiểm tra Database PostgreSQL trên Server, trạng thái vé của sinh viên đó phải chuyển thành checkin_status = true.
 
 _(Lưu ý: Nếu ứng dụng đang chạy ngầm hoặc bị đóng, thời gian đồng bộ có thể trễ hơn 1 phút do phụ thuộc hoàn toàn vào chu kỳ cấp phát tài nguyên Background Fetch của hệ điều hành)._
 
-### Test Case 3 (Security Test)
+### Test Case 6 (Security Test)
 
 Tự dùng công cụ tạo một mã QR chứa chữ "123456" rồi dùng app quét. Hệ thống từ chối truy cập.
