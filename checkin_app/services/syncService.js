@@ -1,4 +1,5 @@
-import { API_BASE_URL, PULL_ENDPOINT, PUSH_ENDPOINT } from "../constants/config";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { API_BASE_URL, AUTH_TOKEN_KEY, PULL_ENDPOINT, PUSH_ENDPOINT } from "../constants/config";
 import { runSql, runSqlTransaction } from "./db";
 
 function mapPullData(data) {
@@ -11,9 +12,31 @@ function mapPullData(data) {
   return [];
 }
 
+async function getAuthToken() {
+  try {
+    return await AsyncStorage.getItem(AUTH_TOKEN_KEY);
+  } catch (error) {
+    console.warn("[auth] Failed to read token:", error?.message || error);
+    return null;
+  }
+}
+
+async function buildAuthHeaders(requireAuth = false) {
+  const token = await getAuthToken();
+  if (!token) {
+    if (requireAuth) {
+      throw new Error("Not authenticated");
+    }
+    return {};
+  }
+
+  return { Authorization: `Bearer ${token}` };
+}
+
 export async function pullRegistrations(workshopId) {
   const url = `${API_BASE_URL}${PULL_ENDPOINT}?workshop_id=${encodeURIComponent(workshopId)}`;
-  const response = await fetch(url);
+  const authHeaders = await buildAuthHeaders(true);
+  const response = await fetch(url, { headers: authHeaders });
 
   if (!response.ok) {
     throw new Error(`Sync failed with status ${response.status}`);
@@ -65,10 +88,16 @@ export async function pushPendingToServer() {
     return { sent: 0 };
   }
 
+  const authHeaders = await buildAuthHeaders(false);
+  if (!authHeaders.Authorization) {
+    return { sent: 0, skippedAuth: true };
+  }
+
   const response = await fetch(`${API_BASE_URL}${PUSH_ENDPOINT}`, {
     method: "PUT",
     headers: {
       "Content-Type": "application/json",
+      ...authHeaders,
     },
     body: JSON.stringify(pendingItems),
   });

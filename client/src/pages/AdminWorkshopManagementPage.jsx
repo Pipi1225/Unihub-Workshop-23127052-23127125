@@ -23,12 +23,33 @@ export default function AdminWorkshopManagementPage() {
     start_time: "",
     end_time: "",
     thumbnail: "",
+    pdf_url: "",
   });
 
   const [selectedFile, setSelectedFile] = useState(null);
   const [roomMapFile, setRoomMapFile] = useState(null);
   const fileInputRef = useRef(null);
   const roomMapInputRef = useRef(null);
+  const apiBaseUrl = import.meta.env.VITE_API_URL || "http://localhost:4000";
+
+  const resolvePublicUrl = (url) => {
+    if (!url) {
+      return "";
+    }
+    if (url.startsWith("/")) {
+      return `${apiBaseUrl}${url}`;
+    }
+    return url;
+  };
+
+  const getFileNameFromUrl = (url) => {
+    if (!url) {
+      return "";
+    }
+    const clean = url.split("?")[0];
+    const parts = clean.split("/");
+    return parts[parts.length - 1] || "";
+  };
 
   useEffect(() => {
     if (isEditing) {
@@ -51,6 +72,7 @@ export default function AdminWorkshopManagementPage() {
         start_time: formatDateInput(data.start_time) || "",
         end_time: formatDateInput(data.end_time) || "",
         thumbnail: data.thumbnail || "",
+        pdf_url: data.pdf_url || "",
       });
       setError(null);
     } catch (err) {
@@ -146,6 +168,19 @@ export default function AdminWorkshopManagementPage() {
       setSubmitting(false);
     }
   };
+
+  const currentRoomMapUrl = resolvePublicUrl(formData.room_map_url);
+  const currentPdfUrl = resolvePublicUrl(formData.pdf_url);
+  const roomMapLabel = roomMapFile
+    ? roomMapFile.name
+    : formData.room_map_url
+      ? `Đang dùng: ${getFileNameFromUrl(formData.room_map_url) || "file hiện tại"}`
+      : "Chưa chọn file nào";
+  const pdfLabel = selectedFile
+    ? selectedFile.name
+    : formData.pdf_url
+      ? `Đang dùng: ${getFileNameFromUrl(formData.pdf_url) || "file hiện tại"}`
+      : "Chưa chọn file nào";
 
   if (loading) {
     return (
@@ -273,7 +308,7 @@ export default function AdminWorkshopManagementPage() {
                   Choose Room Map Image
                 </button>
                 <span className="text-sm text-gray-700 break-all">
-                  {roomMapFile ? roomMapFile.name : "Chưa chọn file nào"}
+                  {roomMapLabel}
                 </span>
               </div>
 
@@ -288,6 +323,16 @@ export default function AdminWorkshopManagementPage() {
               <p className="text-xs text-gray-500 mt-2">
                 Chỉ hỗ trợ ảnh .png, .jpg, .jpeg, .webp.
               </p>
+              {currentRoomMapUrl && !roomMapFile && (
+                <a
+                  href={currentRoomMapUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-xs text-blue-600 hover:underline mt-2 inline-block"
+                >
+                  Xem sơ đồ phòng hiện tại
+                </a>
+              )}
             </div>
           </div>
 
@@ -352,7 +397,7 @@ export default function AdminWorkshopManagementPage() {
                   Choose PDF File
                 </button>
                 <span className="text-sm text-gray-700 break-all">
-                  {selectedFile ? selectedFile.name : "Chưa chọn file nào"}
+                  {pdfLabel}
                 </span>
               </div>
 
@@ -376,6 +421,16 @@ export default function AdminWorkshopManagementPage() {
                 </a>
                 .
               </p>
+              {currentPdfUrl && !selectedFile && (
+                <a
+                  href={currentPdfUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-xs text-blue-600 hover:underline mt-2 inline-block"
+                >
+                  Xem PDF hiện tại
+                </a>
+              )}
             </div>
           </div>
 
