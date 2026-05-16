@@ -135,7 +135,7 @@ Tại màn hình đăng nhập, nhập thông tin của một tài khoản hợp
 
 ### Test Case 3 (Offline Mode)
 
-Mở app, tải dữ liệu sự kiện (sau khi đã có dữ liệu local hợp lệ). Sau đó TẮT hoàn toàn WiFi/4G (chuyển sang Airplane mode). Thực hiện quét 1 mã QR hợp lệ. Giao diện báo thành công. Đóng app, mở lại, số liệu điểm danh cục bộ vẫn được giữ nguyên.
+Mở app, tải dữ liệu sự kiện (sau khi đã có dữ liệu local hợp lệ). Sau đó TẮT hoàn toàn WiFi/4G (chuyển sang Airplane mode). Thực hiện quét 1 mã QR hợp lệ. Giao diện báo thành công.
 
 ### Test Case 4 (Duplicate Scan - Already Checked-in)
 
@@ -149,4 +149,4 @@ _(Lưu ý: Nếu ứng dụng đang chạy ngầm hoặc bị đóng, thời gia
 
 ### Test Case 6 (Security Test)
 
-Tự dùng công cụ tạo một mã QR chứa chữ "123456" rồi dùng app quét. Hệ thống từ chối truy cập.
+Tự dùng công cụ tạo một mã QR chứa chữ "12345678" rồi dùng app quét. Hệ thống từ chối truy cập.
