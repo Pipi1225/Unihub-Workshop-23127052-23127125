@@ -4,6 +4,9 @@
  */
 
 const cron = require('node-cron');
+const path = require("path");
+
+const projectRoot = path.resolve(__dirname, "../../../");
 const { runCsvSync } = require('../services/csvSyncService');
 const { acquireLock, releaseLock } = require('../utils/redisLock');
 
@@ -20,9 +23,9 @@ async function bootstrapCsvSyncScheduler(redis, options = {}) {
     cronExpression = process.env.CSV_SYNC_CRON || '0 2 * * *',
     lockKey = 'csv-sync-lock',
     lockTtl = 3600, // 1 hour max execution time
-    importDir = process.env.CSV_IMPORT_DIR || 'data/import',
-    archiveDir = process.env.CSV_ARCHIVE_DIR || 'data/archive',
-    errorDir = process.env.CSV_ERROR_DIR || 'data/error',
+    importDir = path.resolve(projectRoot, process.env.CSV_IMPORT_DIR || 'data/import'),
+    archiveDir = path.resolve(projectRoot, process.env.CSV_ARCHIVE_DIR || 'data/archive'),
+    errorDir = path.resolve(projectRoot, process.env.CSV_ERROR_DIR || 'data/error'),
   } = options;
 
   console.log(`[csvSyncScheduler] Bootstrapping with cron: ${cronExpression}`);

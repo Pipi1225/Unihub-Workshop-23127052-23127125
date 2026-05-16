@@ -77,16 +77,18 @@ Trong giới hạn của hệ thống hiện tại, tiến trình CSV Sync chỉ
 
 ### Test Case 1 (Streaming & Performance)
 
-Nạp một file CSV chứa 1.000 bản ghi (khoảng 1MB). Kích hoạt Worker. Quá trình xử lý không văng lỗi Out of Memory và Database có đúng 1.000 tài khoản STUDENT mới.
+Nạp một file CSV chứa 12.000 bản ghi (khoảng 0.5MB). Kích hoạt Worker. Quá trình xử lý không văng lỗi Out of Memory và Database có đúng 12.000 tài khoản STUDENT mới.
 
-### Test Case 2 (Idempotency / Upsert)
-
-Chạy lại chính xác file CSV của Test Case 1 lần thứ hai. Số lượng bản ghi trong Database giữ nguyên không đổi (1.000), không có lỗi văng ra.
-
-### Test Case 3 (Fault Tolerance)
-
-Tạo một file CSV có 1.000 dòng chuẩn, xen kẽ 5 dòng bị cố tình làm sai định dạng email. Chạy Worker. Kết quả Database nhận đúng 1.000 user. File error.log sinh ra ghi nhận chính xác dòng số bao nhiêu bị lỗi và lý do lỗi.
-
-### Test Case 4 (Archiving)
+### Test Case 2 (Archiving)
 
 Sau khi chạy thành công Test Case 1, kiểm tra lại thư mục /data/import phải trống, và file CSV đã được chuyển an toàn sang /data/archive với hậu tố \_DONE.
+
+### Test Case 3 (Idempotency / Upsert)
+
+Chạy lại chính xác file CSV của Test Case 1 lần thứ hai. Số lượng bản ghi trong Database giữ nguyên không đổi (12.000), không có lỗi văng ra.
+
+### Test Case 4 (Fault Tolerance)
+
+Tạo một file CSV có 1.000 dòng chuẩn, trong đó có 5 dòng bị cố tình làm sai định dạng email. Chạy Worker. Kết quả Database nhận đúng 995 user, bỏ qua 5 user lỗi. File error.log sinh ra ghi nhận chính xác dòng số bao nhiêu bị lỗi và lý do lỗi.
+
+
