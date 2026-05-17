@@ -93,11 +93,12 @@ async function ensureRegistration(workshopId) {
     token: STUDENT_TOKEN,
     body: { workshop_id: workshopId },
   });
-
+  // If registration_id returned immediately, we're done
   if (createRes.status === 201 && createRes.data?.registration_id) {
     return createRes.data.registration_id;
   }
 
+  // If registration already exists (conflict), try to read existing
   if (createRes.status === 409) {
     const existing = await requestJson(
       `/api/registrations/by-workshop/${workshopId}`,
@@ -107,6 +108,31 @@ async function ensureRegistration(workshopId) {
     if (existing.status === 200 && existing.data?.data?.id) {
       return existing.data.data.id;
     }
+  }
+
+  // Otherwise the registration was queued for background processing (PENDING).
+  // Poll the registrations endpoint until the registration is persisted or timeout.
+  const timeoutMs = Number(process.env.QUEUE_DRAIN_TIMEOUT_MS || 60000);
+  const pollMs = Number(process.env.QUEUE_DRAIN_POLL_MS || 1000);
+  const start = Date.now();
+
+  while (Date.now() - start <= timeoutMs) {
+    try {
+      const res = await requestJson(
+        `/api/registrations/by-workshop/${workshopId}`,
+        {
+          token: STUDENT_TOKEN,
+        },
+      );
+
+      if (res.status === 200 && res.data?.data?.id) {
+        return res.data.data.id;
+      }
+    } catch (_e) {
+      // ignore transient errors and retry
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, pollMs));
   }
 
   throw new Error(

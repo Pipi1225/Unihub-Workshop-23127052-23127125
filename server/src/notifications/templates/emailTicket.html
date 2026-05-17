@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
@@ -64,9 +64,21 @@
         <p><strong>Time:</strong> {{workshop_time}}</p>
         <p><strong>QR Code Hash:</strong></p>
         <div class="hash">{{qr_code_hash}}</div>
-        <p style="margin-top: 12px;">
+        <p style="margin-top: 12px">
           <a class="link" href="{{qr_code_url}}">View QR Code</a>
         </p>
+        <div style="margin-top: 16px">
+          <img
+            src="{{qr_code_image}}"
+            alt="QR Code"
+            style="
+              width: 220px;
+              height: 220px;
+              border-radius: 8px;
+              border: 1px solid #e0e0e0;
+            "
+          />
+        </div>
       </div>
 
       <p class="footer">

@@ -194,14 +194,28 @@ async function ensurePaymentRecord({ registration, idempotencyKey }) {
     return existingPayment;
   }
 
-  return prisma.payments.create({
-    data: {
-      registration_id: registration.id,
-      idempotency_key: idempotencyKey,
-      amount: registration.workshops.price,
-      status: "PENDING",
-    },
-  });
+  try {
+    return await prisma.payments.create({
+      data: {
+        registration_id: registration.id,
+        idempotency_key: idempotencyKey,
+        amount: registration.workshops.price,
+        status: "PENDING",
+      },
+    });
+  } catch (err) {
+    // Handle race where another process created the payment with same idempotency key
+    // Prisma unique constraint error code is P2002
+    if (err && err.code === "P2002") {
+      const payment = await prisma.payments.findUnique({
+        where: { idempotency_key: idempotencyKey },
+      });
+      if (payment) return payment;
+    }
+
+    // Re-throw unexpected errors
+    throw err;
+  }
 }
 
 async function processPayment({ userId, registrationId, idempotencyKey }) {
@@ -248,6 +262,31 @@ async function processPayment({ userId, registrationId, idempotencyKey }) {
     registration,
     idempotencyKey,
   });
+
+  // Optional behavior: if a payment already exists and is PENDING, return
+  // a conflict response instead of attempting another charge. This is
+  // useful for demo/test scenarios where the first request should perform
+  // the charge and subsequent concurrent requests should receive an
+  // "already exists"/conflict response. Controlled by
+  // PAYMENT_RETURN_CONFLICT_ON_PENDING=true
+  if (
+    String(
+      process.env.PAYMENT_RETURN_CONFLICT_ON_PENDING || "false",
+    ).toLowerCase() === "true" &&
+    payment.status === "PENDING"
+  ) {
+    // Return a 409-like response object (controllers map to HTTP 409)
+    const payload = {
+      ok: false,
+      payment_status: payment.status,
+      payment_id: payment.id,
+      registration_id: registration.id,
+      message: "Payment already exists and is being processed",
+    };
+
+    await cacheResult(idempotencyKey, payload);
+    return payload;
+  }
 
   if (payment.status === "SUCCESS") {
     const payload = {
