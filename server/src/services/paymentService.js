@@ -334,6 +334,29 @@ async function processPayment({ userId, registrationId, idempotencyKey }) {
       idempotencyKey,
     });
   } catch (error) {
+    if (error.code === "PAYMENT_GATEWAY_DOWN") {
+      await prisma.payments.update({
+        where: { id: payment.id },
+        data: {
+          gateway_response: {
+            status: "failed",
+            reason: error.message,
+            code: error.code,
+          },
+        },
+      });
+
+      return {
+        ok: false,
+        queued: false,
+        statusCode: 503,
+        payment_status: payment.status,
+        payment_id: payment.id,
+        registration_id: registration.id,
+        message: "Payment gateway is down. Please try again later.",
+      };
+    }
+
     recordFailure();
 
     await prisma.payments.update({
@@ -413,11 +436,11 @@ async function retryPayment({ paymentId }) {
   }
 }
 
-function getMockPaymentMode() {
+async function getMockPaymentMode() {
   return mockGateway.getPaymentMode();
 }
 
-function setMockPaymentMode(mode) {
+async function setMockPaymentMode(mode) {
   return mockGateway.setPaymentMode(mode);
 }
 

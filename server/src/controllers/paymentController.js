@@ -24,17 +24,17 @@ async function processPayment(req, res) {
 async function getMockPaymentMode(_req, res) {
   res.status(200).json({
     ok: true,
-    mode: paymentService.getMockPaymentMode(),
+    mode: await paymentService.getMockPaymentMode(),
   });
 }
 
 async function updateMockPaymentMode(req, res) {
   const { mode } = req.body || {};
-  paymentService.setMockPaymentMode(mode);
+  await paymentService.setMockPaymentMode(mode);
 
   res.status(200).json({
     ok: true,
-    mode: paymentService.getMockPaymentMode(),
+    mode: await paymentService.getMockPaymentMode(),
   });
 }
 
