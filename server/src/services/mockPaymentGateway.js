@@ -1,6 +1,8 @@
 const crypto = require("crypto");
+const redisClient = require("../config/redis");
 
 const VALID_MODES = new Set(["success", "failure"]);
+const PAYMENT_MODE_KEY = "payments:mock_mode";
 
 let paymentMode = String(
   process.env.PAYMENT_MOCK_MODE || "success",
@@ -9,11 +11,21 @@ if (!VALID_MODES.has(paymentMode)) {
   paymentMode = "success";
 }
 
-function getPaymentMode() {
-  return paymentMode;
+async function getPaymentMode() {
+  const modeFromRedis = await redisClient.get(PAYMENT_MODE_KEY);
+  const normalized = String(
+    modeFromRedis || paymentMode || "success",
+  ).toLowerCase();
+
+  if (!VALID_MODES.has(normalized)) {
+    return "success";
+  }
+
+  paymentMode = normalized;
+  return normalized;
 }
 
-function setPaymentMode(mode) {
+async function setPaymentMode(mode) {
   const normalized = String(mode || "").toLowerCase();
   if (!VALID_MODES.has(normalized)) {
     throw Object.assign(new Error("Invalid payment mock mode"), {
@@ -22,10 +34,14 @@ function setPaymentMode(mode) {
   }
 
   paymentMode = normalized;
+  await redisClient.set(PAYMENT_MODE_KEY, normalized);
+
+  return normalized;
 }
 
 async function charge({ amount, registrationId, idempotencyKey }) {
-  if (paymentMode === "failure") {
+  const mode = await getPaymentMode();
+  if (mode === "failure") {
     const error = new Error("Mock payment gateway is unavailable");
     error.code = "PAYMENT_GATEWAY_DOWN";
     throw error;

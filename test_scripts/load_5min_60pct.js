@@ -8,9 +8,9 @@ const {
 const TARGET_PATH = process.env.TARGET_PATH || "/api/workshops";
 const METHOD = process.env.METHOD || "GET";
 const TOTAL_USERS = Number(process.env.TOTAL_USERS || 12000);
-const TOTAL_MINUTES = Number(process.env.TOTAL_MINUTES || 10);
+const TOTAL_MINUTES = Number(process.env.TOTAL_MINUTES || 5);
 const PEAK_PERCENT = Number(process.env.PEAK_PERCENT || 0.6);
-const PEAK_MINUTES = Number(process.env.PEAK_MINUTES || 3);
+const PEAK_MINUTES = Number(process.env.PEAK_MINUTES || 2);
 const USE_TOKEN =
   String(process.env.USE_TOKEN || "false").toLowerCase() === "true";
 
@@ -29,7 +29,7 @@ async function run() {
   const rateRest = restUsers / Math.max(1, totalSeconds - peakSeconds);
 
   console.log(`Total users: ${TOTAL_USERS}`);
-  console.log(`Window: ${TOTAL_MINUTES}m`);
+  console.log(`Duration: ${TOTAL_MINUTES}m`);
   console.log(`Peak: ${Math.round(PEAK_PERCENT * 100)}% in ${PEAK_MINUTES}m`);
   console.log(`Rate (peak): ${ratePeak.toFixed(2)} req/s`);
   console.log(`Rate (rest): ${rateRest.toFixed(2)} req/s`);
@@ -74,8 +74,10 @@ async function run() {
     }
 
     second += 1;
-    if (second % 10 === 0) {
-      console.log(`Progress: ${second}s, sent ${sent}`);
+    if (second % (totalSeconds >= 60 ? 10 : 5) === 0) {
+      console.log(
+        `Progress: ${second}s/${totalSeconds}s, sent ${sent} requests`,
+      );
     }
   }, 1000);
 }
