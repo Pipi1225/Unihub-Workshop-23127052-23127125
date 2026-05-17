@@ -52,6 +52,11 @@ export default function PaymentPage() {
   const handleRegistrationLoaded = (data) => {
     setRegistration(data);
 
+    if (data.payment_status !== "PAID") {
+      setPendingPayment(false);
+      setPendingMessage(null);
+    }
+
     if (data.payment_status === "PAID") {
       if (shouldToastOnPaid.current) {
         const title = data.workshop?.title || "Workshop";
@@ -68,22 +73,53 @@ export default function PaymentPage() {
     }
   };
 
+  const waitForRegistration = async (workshopIdToPoll, attempts = 5) => {
+    for (let i = 0; i < attempts; i += 1) {
+      try {
+        const existing =
+          await registrationService.getRegistrationByWorkshop(workshopIdToPoll);
+        if (existing) {
+          return existing;
+        }
+      } catch (pollError) {
+        if (pollError.response?.status !== 404) {
+          throw pollError;
+        }
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+
+    return null;
+  };
+
   const initRegistration = async () => {
     try {
       setLoading(true);
       const result = await registrationService.register(workshopId);
 
-      if (!result?.registration_id) {
-        throw new Error("Không thể tạo đăng ký");
-      }
-
       if (result.payment_status === "PAID") {
         shouldToastOnPaid.current = true;
       }
 
-      const data = await registrationService.getRegistration(
-        result.registration_id,
-      );
+      let data = null;
+      if (result?.registration_id) {
+        data = await registrationService.getRegistration(
+          result.registration_id,
+        );
+      } else {
+        setPendingPayment(true);
+        setPendingMessage(
+          "Đơn đăng ký đang được tạo, vui lòng đợi một chút...",
+        );
+        data = await waitForRegistration(workshopId);
+      }
+
+      if (!data) {
+        setError(null);
+        return;
+      }
+
       handleRegistrationLoaded(data);
       setError(null);
     } catch (err) {
@@ -168,6 +204,16 @@ export default function PaymentPage() {
   }
 
   if (!registration) {
+    if (pendingPayment || pendingMessage) {
+      return (
+        <div className="max-w-xl mx-auto text-center">
+          <div className="bg-blue-50 border border-blue-200 text-blue-700 px-4 py-3 rounded">
+            {pendingMessage || "Đơn đăng ký đang được xử lý..."}
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="text-center text-red-600">Không thể tạo đơn đăng ký</div>
     );

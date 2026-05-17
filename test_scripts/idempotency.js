@@ -40,6 +40,30 @@ async function run() {
   console.log(first);
   console.log("\nSecond response:");
   console.log(second);
+
+  // Evaluate idempotency: accept same responses or PENDING semantics
+  const firstBody = first.data || {};
+  const secondBody = second.data || {};
+
+  const identicalResponses =
+    first.status === second.status &&
+    JSON.stringify(firstBody) === JSON.stringify(secondBody);
+
+  const bothPending =
+    first.status === 201 &&
+    second.status === 201 &&
+    String(firstBody.payment_status || "").toUpperCase() === "PENDING" &&
+    String(secondBody.payment_status || "").toUpperCase() === "PENDING";
+
+  if (identicalResponses || bothPending) {
+    console.log(
+      "\nIdempotency behaviour OK — responses are idempotent (accepted PENDING).",
+    );
+    process.exit(0);
+  }
+
+  console.error("\nIdempotency behaviour NOT OK — responses differ.");
+  process.exit(1);
 }
 
 run().catch((error) => {
